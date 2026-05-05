@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Jojo Tofu Survivor - Hard Mode</title>
+    <title>Jojo Tofu Survivor - Time Stop Edition</title>
     <style>
         body { margin: 0; overflow: hidden; background: #87CEEB; font-family: 'MS Gothic', sans-serif; }
         #ui { position: absolute; bottom: 20px; left: 20px; color: #fff; text-shadow: 2px 2px #000; font-size: 20px; font-weight: bold; pointer-events: none; }
@@ -11,16 +11,21 @@
         #sh-fill { width: 0%; height: 100%; background: #0cf; transition: width 0.1s; }
         #area-ui { position: absolute; top: 10px; right: 10px; color: #f0f; background: rgba(0,0,0,0.8); padding: 10px; border: 2px solid #f0f; border-radius: 5px; font-weight: bold; text-align: right; }
         #warning { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #ff0000; font-size: 40px; font-weight: bold; display: none; text-shadow: 3px 3px #000; }
+        /* 時を止めた時のエフェクト */
+        #time-stop-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; mix-blend-mode: difference; background: white; display: none; z-index: 10; }
+        #timestop-ui { position: absolute; bottom: 80px; left: 20px; color: #ff0; font-size: 18px; text-shadow: 1px 1px #000; }
     </style>
 </head>
 <body>
 
+    <div id="time-stop-overlay"></div>
     <div id="warning">⚠️エリア外ダメージ⚠️</div>
     <div id="area-ui">
         SURVIVORS: <span id="survivors-count">41</span><br>
         RADIUS: <span id="area-radius">150</span><br>
         <small id="damage-rate">DMG: x1.5</small>
     </div>
+    <div id="timestop-ui">TIME STOP: READY (E)</div>
     <div id="ui">
         SHIELD <div class="bar-container"><div id="sh-fill"></div></div>
         HP <div class="bar-container"><div id="hp-fill"></div></div>
@@ -43,29 +48,20 @@
         scene.add(sunLight);
 
         const obstacles = [];
-        const floor = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshPhongMaterial({ color: 0x666666 }));
-        floor.rotation.x = -Math.PI / 2;
-        scene.add(floor);
-
         function createBuilding(x, z, w, h, d) {
             const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshPhongMaterial({ color: 0x444444 }));
             mesh.position.set(x, h/2, z);
             scene.add(mesh);
             obstacles.push({ minX: x-w/2, maxX: x+w/2, minZ: z-d/2, maxZ: z+d/2 });
         }
-        for (let i = 0; i < 40; i++) {
-            createBuilding(Math.random()*260-130, Math.random()*260-130, 8, Math.random()*20+5, 8);
-        }
+        for (let i = 0; i < 40; i++) createBuilding(Math.random()*260-130, Math.random()*260-130, 8, Math.random()*20+5, 8);
 
         const areaCircle = new THREE.Mesh(new THREE.RingGeometry(1, 400, 64), new THREE.MeshBasicMaterial({ color: 0x8800ff, side: THREE.DoubleSide, transparent: true, opacity: 0.5 }));
         areaCircle.rotation.x = -Math.PI / 2;
         areaCircle.position.y = 0.11;
         scene.add(areaCircle);
 
-        let areaRadius = 150;
-        let baseAreaDamage = 8;
-        let timeElapsed = 0;
-
+        let areaRadius = 150, timeElapsed = 0;
         const player = new THREE.Group();
         scene.add(player);
         const playerBody = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshPhongMaterial({ color: 0xffffff }));
@@ -75,12 +71,14 @@
         camera.position.set(0, 3, 6);
         camera.lookAt(0, 1, -5);
 
-        const stand = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), new THREE.MeshPhongMaterial({ color: 0xff0000, emissive: 0xff0000, emissiveIntensity: 0.5 }));
+        const stand = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), new THREE.MeshPhongMaterial({ color: 0xff0000, emissive: 0xff0000 }));
         stand.position.set(0, 0.6, -2);
         stand.visible = false;
         player.add(stand);
 
         let playerHP = 100, playerSH = 0;
+        let isTimeStopped = false;
+        let timeStopCooldown = 0;
 
         const enemies = [];
         function spawnEnemy() {
@@ -90,12 +88,9 @@
             const body = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), new THREE.MeshPhongMaterial({ color: 0xffff00 }));
             body.position.y = 0.6;
             mesh.add(body);
-            
-            const eStand = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshPhongMaterial({ color: 0xff4444, emissive: 0xaa0000 }));
-            eStand.position.set(0, 0.6, -1.5); 
-            eStand.visible = false;
+            const eStand = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshPhongMaterial({ color: 0xff4444 }));
+            eStand.position.set(0, 0.6, -1.5); eStand.visible = false;
             mesh.add(eStand);
-            
             mesh.position.set(x, 0, z);
             scene.add(mesh);
             enemies.push({ mesh: mesh, stand: eStand, alive: true, hp: 75, attackCooldown: 0, hateTimer: 0 });
@@ -103,50 +98,62 @@
         for(let i=0; i<40; i++) spawnEnemy();
 
         const keys = {};
-        document.addEventListener('keydown', (e) => keys[e.code] = true);
+        document.addEventListener('keydown', (e) => {
+            keys[e.code] = true;
+            if (e.code === 'KeyE' && timeStopCooldown <= 0 && !isTimeStopped) startTimeStop();
+        });
         document.addEventListener('keyup', (e) => keys[e.code] = false);
 
-        function checkCollision(newX, newZ) {
-            for (let obs of obstacles) {
-                if (newX+0.7 > obs.minX && newX-0.7 < obs.maxX && newZ+0.7 > obs.minZ && newZ-0.7 < obs.maxZ) return true;
-            }
+        function startTimeStop() {
+            isTimeStopped = true;
+            document.getElementById('time-stop-overlay').style.display = 'block';
+            document.getElementById('timestop-ui').innerText = "TIME STOPPED!";
+            setTimeout(() => {
+                isTimeStopped = false;
+                timeStopCooldown = 15; // 15秒のクールダウン
+                document.getElementById('time-stop-overlay').style.display = 'none';
+            }, 5000); // 5秒間停止
+        }
+
+        function checkCollision(nX, nZ) {
+            for (let obs of obstacles) if (nX+0.7 > obs.minX && nX-0.7 < obs.maxX && nZ+0.7 > obs.minZ && nZ-0.7 < obs.maxZ) return true;
             return false;
         }
 
         let isAttacking = false;
         function attack() {
             if(isAttacking) return;
-            isAttacking = true;
-            stand.visible = true;
-            const rushInterval = setInterval(() => {
+            isAttacking = true; stand.visible = true;
+            const rush = setInterval(() => {
                 stand.position.set((Math.random()-0.5)*0.8, 0.6+(Math.random()-0.5)*0.6, -2.0+(Math.random()-0.5)*0.5);
                 const standPos = new THREE.Vector3();
                 stand.getWorldPosition(standPos);
                 enemies.forEach(e => {
-                    if(e.alive && standPos.distanceTo(e.mesh.position) < 3.0) {
-                        e.hp -= 3;
-                        e.hateTimer = 10;
-                    }
+                    if(e.alive && standPos.distanceTo(e.mesh.position) < 3.0) { e.hp -= 3; e.hateTimer = 10; }
                 });
             }, 30);
-            setTimeout(() => {
-                clearInterval(rushInterval);
-                stand.visible = false; isAttacking = false;
-                stand.position.set(0, 0.6, -2);
-            }, 400);
+            setTimeout(() => { clearInterval(rush); stand.visible = false; isAttacking = false; stand.position.set(0, 0.6, -2); }, 400);
         }
 
         const clock = new THREE.Clock();
         function animate() {
             requestAnimationFrame(animate);
             const delta = clock.getDelta();
-            timeElapsed += delta;
+            
+            // 時が止まっていない場合のみ進行する要素
+            if (!isTimeStopped) {
+                timeElapsed += delta;
+                if (areaRadius > 5) areaRadius -= delta * 1.2;
+                areaCircle.geometry = new THREE.RingGeometry(areaRadius, 400, 64);
+                if (timeStopCooldown > 0) {
+                    timeStopCooldown -= delta;
+                    document.getElementById('timestop-ui').innerText = `COOLDOWN: ${Math.ceil(timeStopCooldown)}s`;
+                } else {
+                    document.getElementById('timestop-ui').innerText = "TIME STOP: READY (E)";
+                }
+            }
 
-            if (areaRadius > 5) areaRadius -= delta * 1.2;
-            areaCircle.geometry = new THREE.RingGeometry(areaRadius, 400, 64);
-            const currentScaling = 1.5 + (timeElapsed / 35);
-            const currentDmg = baseAreaDamage * currentScaling;
-
+            const currentDmg = 8 * (1.5 + (timeElapsed / 35));
             document.getElementById('area-radius').innerText = Math.floor(areaRadius);
 
             const distP = Math.sqrt(player.position.x**2 + player.position.z**2);
@@ -157,6 +164,7 @@
                 document.getElementById('warning').style.display = 'none';
             }
 
+            // プレイヤーは時が止まっていても動ける
             if (keys['ArrowLeft']) player.rotation.y += 2.5 * delta;
             if (keys['ArrowRight']) player.rotation.y -= 2.5 * delta;
             const moveSpeed = 15 * delta, angle = player.rotation.y;
@@ -174,75 +182,45 @@
             enemies.forEach(e => {
                 if(!e.alive) return;
                 aliveCount++;
-                const distToCenter = Math.sqrt(e.mesh.position.x**2 + e.mesh.position.z**2);
-                const distToP = e.mesh.position.distanceTo(player.position);
-
-                if (distToCenter > areaRadius) e.hp -= currentDmg * delta;
                 if (e.hp <= 0) { e.alive = false; scene.remove(e.mesh); return; }
 
-                let target = null;
-                let targetDist = Infinity;
+                // 時が止まっている間は敵のAIを完全停止
+                if (isTimeStopped) return;
 
-                if (e.hateTimer > 0) {
-                    target = player; targetDist = distToP; e.hateTimer -= delta;
-                } else {
-                    if (distToP < 30) { target = player; targetDist = distToP; }
+                const distToCenter = Math.sqrt(e.mesh.position.x**2 + e.mesh.position.z**2);
+                const distToP = e.mesh.position.distanceTo(player.position);
+                if (distToCenter > areaRadius) e.hp -= currentDmg * delta;
+
+                let target = (e.hateTimer > 0 || distToP < 30) ? player : null;
+                if (!target) {
                     enemies.forEach(other => {
-                        if (other === e || !other.alive) return;
-                        const d = e.mesh.position.distanceTo(other.mesh.position);
-                        if (d < 15 && d < targetDist) { target = other.mesh; targetDist = d; }
+                        if (other !== e && other.alive && e.mesh.position.distanceTo(other.mesh.position) < 15) target = other.mesh;
                     });
                 }
 
-                let moveAngle = null;
-                if (distToCenter > areaRadius - 5) {
-                    moveAngle = Math.atan2(0 - e.mesh.position.x, 0 - e.mesh.position.z);
-                } else if (target) {
-                    moveAngle = Math.atan2(target.position.x - e.mesh.position.x, target.position.z - e.mesh.position.z);
-                }
-
-                if (moveAngle !== null) {
+                if (target) {
+                    const moveAngle = Math.atan2(target.position.x - e.mesh.position.x, target.position.z - e.mesh.position.z);
                     e.mesh.rotation.y = moveAngle;
-                    let stepX = Math.sin(moveAngle) * 8 * delta;
-                    let stepZ = Math.cos(moveAngle) * 8 * delta;
+                    const targetD = e.mesh.position.distanceTo(target.position);
                     
-                    if (checkCollision(e.mesh.position.x + stepX, e.mesh.position.z + stepZ)) {
-                        let avoidAngle = moveAngle + Math.PI / 2;
-                        stepX = Math.sin(avoidAngle) * 8 * delta;
-                        stepZ = Math.cos(avoidAngle) * 8 * delta;
-                        if (checkCollision(e.mesh.position.x + stepX, e.mesh.position.z + stepZ)) {
-                            avoidAngle = moveAngle - Math.PI / 2;
-                            stepX = Math.sin(avoidAngle) * 8 * delta;
-                            stepZ = Math.cos(avoidAngle) * 8 * delta;
+                    if (targetD > 3.2) {
+                        let sX = Math.sin(moveAngle) * 8 * delta, sZ = Math.cos(moveAngle) * 8 * delta;
+                        if (!checkCollision(e.mesh.position.x + sX, e.mesh.position.z + sZ)) {
+                            e.mesh.position.x += sX; e.mesh.position.z += sZ;
                         }
-                    }
-
-                    if (!target || targetDist > 3.2) {
-                        if (!checkCollision(e.mesh.position.x + stepX, e.mesh.position.z)) e.mesh.position.x += stepX;
-                        if (!checkCollision(e.mesh.position.x, e.mesh.position.z + stepZ)) e.mesh.position.z += stepZ;
                     } else if (e.attackCooldown <= 0) {
                         e.stand.visible = true;
-                        const eRush = setInterval(() => {
-                            if (!e.alive) { clearInterval(eRush); return; }
+                        const eRush = setInterval(() => { if (!e.alive || isTimeStopped) { clearInterval(eRush); return; } 
                             e.stand.position.set((Math.random()-0.5)*0.6, 0.6+(Math.random()-0.5)*0.6, -1.5 - (Math.random()*0.8));
                         }, 30);
-                        
-                        // 【ダメージ2倍修正】
-                        if (target === player) {
-                            if (playerSH > 0) playerSH -= 4; else playerHP -= 4; // 2 -> 4
-                        } else {
-                            enemies.forEach(ref => { if(ref.mesh === target) ref.hp -= 10; }); // 5 -> 10
-                        }
-                        
-                        setTimeout(() => { 
-                            clearInterval(eRush); 
-                            e.stand.visible = false; 
-                            e.stand.position.set(0, 0.6, -1.5); 
-                        }, 400);
+                        if (target === player) { if (playerSH > 0) playerSH -= 4; else playerHP -= 4; }
+                        else { enemies.forEach(ref => { if(ref.mesh === target) ref.hp -= 10; }); }
+                        setTimeout(() => { clearInterval(eRush); e.stand.visible = false; e.stand.position.set(0, 0.6, -1.5); }, 400);
                         e.attackCooldown = 1.5;
                     }
                 }
                 if (e.attackCooldown > 0) e.attackCooldown -= delta;
+                if (e.hateTimer > 0) e.hateTimer -= delta;
             });
 
             document.getElementById('survivors-count').innerText = aliveCount;
