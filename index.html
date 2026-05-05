@@ -2,30 +2,30 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Jojo Tofu Survivor - Enemy Edition</title>
+    <title>Jojo Tofu Survivor - Rush Edition</title>
     <style>
         body { margin: 0; overflow: hidden; background: #87CEEB; font-family: 'MS Gothic', sans-serif; }
-        #ui { position: absolute; bottom: 20px; left: 20px; color: #fff; text-shadow: 2px 2px #000; font-size: 28px; font-weight: bold; pointer-events: none; }
-        #hp-bar { width: 200px; height: 20px; background: #333; border: 2px solid #fff; margin-top: 10px; }
-        #hp-fill { width: 100%; height: 100%; background: #0f0; transition: width 0.2s; }
-        #instructions { position: absolute; top: 10px; left: 10px; color: #000; background: rgba(255,255,255,0.8); padding: 15px; border: 2px solid #333; border-radius: 10px; pointer-events: none; }
+        #ui { position: absolute; bottom: 20px; left: 20px; color: #fff; text-shadow: 2px 2px #000; font-size: 24px; font-weight: bold; pointer-events: none; }
+        .bar-container { width: 200px; height: 15px; background: #333; border: 2px solid #fff; margin-top: 5px; }
+        #hp-fill { width: 100%; height: 100%; background: #0f0; transition: width 0.1s; }
+        #sh-fill { width: 0%; height: 100%; background: #0cf; transition: width 0.1s; }
+        #instructions { position: absolute; top: 10px; left: 10px; color: #000; background: rgba(255,255,255,0.8); padding: 15px; border: 2px solid #333; border-radius: 10px; pointer-events: none; font-size: 14px; }
     </style>
 </head>
 <body>
 
     <div id="instructions">
-        WASD：移動 / 矢印キー：視点操作<br>
-        <b>スペースキー：赤豆腐で敵を攻撃！</b>
+        WASD：移動 / 矢印キー：視点操作 / Space：<b>オラオララッシュ！</b><br>
+        敵の体力が大幅アップ！何度も叩き込め！
     </div>
     <div id="ui">
-        PLAYER HP
-        <div id="hp-bar"><div id="hp-fill"></div></div>
+        SHIELD <div class="bar-container"><div id="sh-fill"></div></div>
+        HP <div class="bar-container"><div id="hp-fill"></div></div>
     </div>
 
     <script type="module">
         import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.module.min.js';
 
-        // --- 基本設定 ---
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x87CEEB);
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -39,7 +39,6 @@
         sunLight.position.set(50, 100, 50);
         scene.add(sunLight);
 
-        // --- マップと衝突判定 ---
         const obstacles = [];
         const floor = new THREE.Mesh(new THREE.PlaneGeometry(300, 300), new THREE.MeshPhongMaterial({ color: 0x999999 }));
         floor.rotation.x = -Math.PI / 2;
@@ -47,19 +46,16 @@
 
         function createBuilding(x, z, w, h, d, color) {
             const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshPhongMaterial({ color: color }));
-            mesh.position.set(x, h / 2, z);
+            mesh.position.set(x, h/2, z);
             scene.add(mesh);
-            obstacles.push({ minX: x - w/2, maxX: x + w/2, minZ: z - d/2, maxZ: z + d/2 });
+            obstacles.push({ minX: x-w/2, maxX: x+w/2, minZ: z-d/2, maxZ: z+d/2 });
         }
-
         for (let i = 0; i < 40; i++) {
-            const x = Math.random() * 200 - 100;
-            const z = Math.random() * 200 - 100;
+            const x = Math.random()*240-120, z = Math.random()*240-120;
             if (Math.abs(x) < 20 && Math.abs(z) < 20) continue;
-            createBuilding(x, z, Math.random()*6+4, Math.random()*15+5, Math.random()*6+4, 0x777777);
+            createBuilding(x, z, 8, Math.random()*15+5, 8, 0x777777);
         }
 
-        // --- プレイヤー設定 ---
         const player = new THREE.Group();
         scene.add(player);
         const playerBody = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshPhongMaterial({ color: 0xffffff }));
@@ -69,120 +65,132 @@
         camera.position.set(0, 3, 6);
         camera.lookAt(0, 1, -5);
 
-        const stand = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), new THREE.MeshPhongMaterial({ color: 0xff0000 }));
+        const stand = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), new THREE.MeshPhongMaterial({ color: 0xff0000, emissive: 0xff0000, emissiveIntensity: 0.5 }));
         stand.position.set(0, 0.6, -2.5);
         stand.visible = false;
         player.add(stand);
 
-        let playerHP = 100;
+        let playerHP = 100, playerSH = 0;
 
-        // --- 敵（エネミー）設定 ---
+        // --- 敵の体力を10倍(100)に設定 ---
         const enemies = [];
         function spawnEnemy(x, z) {
             const enemyBody = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), new THREE.MeshPhongMaterial({ color: 0xffff00 }));
             enemyBody.position.set(x, 0.6, z);
             scene.add(enemyBody);
-            enemies.push({ mesh: enemyBody, alive: true });
+            // HPを10倍(100)に。元々は1撃(10)だったので実質10倍の耐久
+            enemies.push({ mesh: enemyBody, alive: true, hp: 100 });
         }
+        for(let i=0; i<8; i++) spawnEnemy(Math.random()*200-100, Math.random()*200-100);
 
-        // 初期の敵を配置
-        spawnEnemy(20, 20);
-        spawnEnemy(-30, 40);
-        spawnEnemy(50, -50);
+        const items = [];
+        function spawnItem(x, z, type) {
+            const color = (type === 'heal') ? 0x00ff00 : 0x00aaff;
+            const itemMesh = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.6, 0.6), new THREE.MeshPhongMaterial({ color: color, emissive: color, emissiveIntensity: 0.5 }));
+            itemMesh.position.set(x, 0.5, z);
+            scene.add(itemMesh);
+            items.push({ mesh: itemMesh, type: type, alive: true });
+        }
+        for(let i=0; i<15; i++) spawnItem(Math.random()*200-100, Math.random()*200-100, i%2===0 ? 'heal' : 'shield');
 
-        // --- 入力判定 ---
         const keys = {};
         document.addEventListener('keydown', (e) => keys[e.code] = true);
         document.addEventListener('keyup', (e) => keys[e.code] = false);
 
         function checkCollision(newX, newZ) {
             for (let obs of obstacles) {
-                if (newX + 0.6 > obs.minX && newX - 0.6 < obs.maxX && newZ + 0.6 > obs.minZ && newZ - 0.6 < obs.maxZ) return true;
+                if (newX+0.6 > obs.minX && newX-0.6 < obs.maxX && newZ+0.6 > obs.minZ && newZ-0.6 < obs.maxZ) return true;
             }
             return false;
         }
 
+        // --- スタンド攻撃（ブルブル震える演出） ---
         let isAttacking = false;
         function attack() {
             if(isAttacking) return;
             isAttacking = true;
             stand.visible = true;
-            
-            // 当たり判定チェック（攻撃の瞬間）
-            setTimeout(() => {
-                const standWorldPos = new THREE.Vector3();
-                stand.getWorldPosition(standWorldPos);
+
+            const startTime = Date.now();
+            const rushDuration = 400; // 0.4秒
+
+            const rushInterval = setInterval(() => {
+                // ブルブル震える（X, Y, Z軸にランダム振動）
+                stand.position.x = (Math.random() - 0.5) * 0.8;
+                stand.position.y = 0.6 + (Math.random() - 0.5) * 0.6;
+                stand.position.z = -2.5 + (Math.random() - 0.5) * 0.4;
                 
+                // 振動中に当たり判定を何度も計算（多段ヒット感）
+                const standPos = new THREE.Vector3();
+                stand.getWorldPosition(standPos);
                 enemies.forEach(enemy => {
-                    if(!enemy.alive) return;
-                    const dist = standWorldPos.distanceTo(enemy.mesh.position);
-                    if(dist < 2.0) { // 攻撃ヒット！
-                        enemy.alive = false;
-                        enemy.mesh.visible = false;
-                        scene.remove(enemy.mesh);
+                    if(enemy.alive && standPos.distanceTo(enemy.mesh.position) < 2.5) {
+                        enemy.hp -= 2; // 1回の振動ごとにダメージ
+                        enemy.mesh.material.emissive.setHex(0xff0000); // 被弾で赤く光る
+                        setTimeout(() => enemy.mesh.material.emissive.setHex(0x000000), 50);
                     }
                 });
-            }, 100);
+            }, 30);
 
-            setTimeout(() => { stand.visible = false; isAttacking = false; }, 300);
+            setTimeout(() => {
+                clearInterval(rushInterval);
+                stand.visible = false;
+                stand.position.set(0, 0.6, -2.5);
+                isAttacking = false;
+                
+                // 死亡判定チェック
+                enemies.forEach(enemy => {
+                    if(enemy.alive && enemy.hp <= 0) {
+                        enemy.alive = false; enemy.mesh.visible = false; scene.remove(enemy.mesh);
+                    }
+                });
+            }, rushDuration);
         }
 
-        // --- メインループ ---
         const clock = new THREE.Clock();
-
         function animate() {
             requestAnimationFrame(animate);
             const delta = clock.getDelta();
 
-            // 1. プレイヤー移動
             if (keys['ArrowLeft']) player.rotation.y += 2.5 * delta;
             if (keys['ArrowRight']) player.rotation.y -= 2.5 * delta;
-            const moveSpeed = 15 * delta;
-            let nextX = player.position.x;
-            let nextZ = player.position.z;
+            const moveSpeed = 15 * delta, angle = player.rotation.y;
             const dirZ = (keys['KeyW'] ? -1 : 0) + (keys['KeyS'] ? 1 : 0);
             const dirX = (keys['KeyA'] ? -1 : 0) + (keys['KeyD'] ? 1 : 0);
             if (dirZ !== 0 || dirX !== 0) {
-                const angle = player.rotation.y;
-                nextX += Math.sin(angle) * dirZ * moveSpeed + Math.cos(angle) * dirX * moveSpeed;
-                nextZ += Math.cos(angle) * dirZ * moveSpeed - Math.sin(angle) * dirX * moveSpeed;
-                if (!checkCollision(nextX, player.position.z)) player.position.x = nextX;
-                if (!checkCollision(player.position.x, nextZ)) player.position.z = nextZ;
+                let nX = player.position.x + (Math.sin(angle)*dirZ + Math.cos(angle)*dirX)*moveSpeed;
+                let nZ = player.position.z + (Math.cos(angle)*dirZ - Math.sin(angle)*dirX)*moveSpeed;
+                if (!checkCollision(nX, player.position.z)) player.position.x = nX;
+                if (!checkCollision(player.position.x, nZ)) player.position.z = nZ;
             }
             if (keys['Space']) attack();
 
-            // 2. 敵のAI（追跡）
             enemies.forEach(enemy => {
                 if(!enemy.alive) return;
-                
-                // プレイヤーへの方向を計算
-                const angleToPlayer = Math.atan2(player.position.x - enemy.mesh.position.x, player.position.z - enemy.mesh.position.z);
-                const enemySpeed = 6 * delta;
-                
-                let ex = enemy.mesh.position.x + Math.sin(angleToPlayer) * enemySpeed;
-                let ez = enemy.mesh.position.z + Math.cos(angleToPlayer) * enemySpeed;
-                
-                // 敵もビルにぶつからないようにする
-                if (!checkCollision(ex, enemy.mesh.position.z)) enemy.mesh.position.x = ex;
-                if (!checkCollision(enemy.mesh.position.x, ez)) enemy.mesh.position.z = ez;
-
-                // 3. ダメージ判定
-                const distToPlayer = enemy.mesh.position.distanceTo(player.position);
-                if(distToPlayer < 1.5) {
-                    playerHP -= 0.5; // 接触ダメージ
-                    document.getElementById('hp-fill').style.width = playerHP + "%";
+                const angleToP = Math.atan2(player.position.x - enemy.mesh.position.x, player.position.z - enemy.mesh.position.z);
+                const eX = enemy.mesh.position.x + Math.sin(angleToP)*7*delta, eZ = enemy.mesh.position.z + Math.cos(angleToP)*7*delta;
+                if (!checkCollision(eX, enemy.mesh.position.z)) enemy.mesh.position.x = eX;
+                if (!checkCollision(enemy.mesh.position.x, eZ)) enemy.mesh.position.z = eZ;
+                if(enemy.mesh.position.distanceTo(player.position) < 1.5) {
+                    if(playerSH > 0) playerSH -= 0.8; else playerHP -= 0.8;
                 }
             });
 
-            if(playerHP <= 0) {
-                alert("再起不能(リタイア)！ ページを更新して再挑戦");
-                playerHP = 100;
-                location.reload();
-            }
+            items.forEach(item => {
+                if(!item.alive) return;
+                item.mesh.rotation.y += delta * 2;
+                if(player.position.distanceTo(item.mesh.position) < 1.5) {
+                    item.alive = false; scene.remove(item.mesh);
+                    if(item.type === 'heal') playerHP = Math.min(100, playerHP + 30);
+                    if(item.type === 'shield') playerSH = Math.min(100, playerSH + 50);
+                }
+            });
 
+            document.getElementById('hp-fill').style.width = playerHP + "%";
+            document.getElementById('sh-fill').style.width = playerSH + "%";
+            if(playerHP <= 0) { alert("RETIRED!"); location.reload(); }
             renderer.render(scene, camera);
         }
-
         animate();
     </script>
 </body>
