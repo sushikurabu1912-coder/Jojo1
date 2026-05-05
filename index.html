@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Jojo Tofu Survivor - Elite AI Edition</title>
+    <title>Jojo Tofu Survivor - Balance Adjust</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: 'MS Gothic', sans-serif; }
         #ui-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 20; }
@@ -110,7 +110,6 @@
             scene.add(eStand);
             group.position.set(Math.cos(angle)*dist, 0, Math.sin(angle)*dist);
             scene.add(group);
-            // 強化：HPアップ
             enemies.push({ mesh: group, stand: eStand, alive: true, hp: 120, attackCooldown: 0, hateTimer: 0, pendingDeath: false });
         }
         for(let i=0; i<40; i++) spawnEnemy();
@@ -179,7 +178,8 @@
                 document.getElementById('warning').style.display = 'block';
             } else { document.getElementById('warning').style.display = 'none'; }
 
-            const speedMultiplier = isTimeStopped ? 1.6 : 1.0;
+            // 修正：停止中の速度ブーストを削除 (1.6 -> 1.0)
+            const speedMultiplier = 1.0; 
             if (keys['ArrowLeft']) player.rotation.y += 3.2 * delta;
             if (keys['ArrowRight']) player.rotation.y -= 3.2 * delta;
             const moveSpeed = 20 * delta * speedMultiplier, angle = player.rotation.y;
@@ -217,25 +217,24 @@
                 const dP = e.mesh.position.distanceTo(player.position);
                 if (dCenter > areaRadius) e.hp -= currentDmg * delta;
 
-                // --- 敵AIの優先順位変更：生存本能 ---
                 let targetPos = null;
                 let isFleeing = false;
 
-                // エリアの端（85%地点）にいたら、戦闘をやめて中央へ向かう
                 if (dCenter > areaRadius * 0.85) {
                     targetPos = new THREE.Vector3(0, 0, 0);
                     isFleeing = true;
                 } else {
+                    // 修正：敵同士の探知距離をプレイヤーと同じ(40)に制限
                     let targetObj = (e.hateTimer > 0 || dP < 40) ? player : null;
-                    if (!targetObj) enemies.forEach(o => { if (o !== e && o.alive && e.mesh.position.distanceTo(o.mesh.position) < 30) targetObj = o.mesh; });
+                    if (!targetObj) enemies.forEach(o => { 
+                        if (o !== e && o.alive && e.mesh.position.distanceTo(o.mesh.position) < 40) targetObj = o.mesh; 
+                    });
                     if (targetObj) targetPos = targetObj.position;
                 }
 
                 if (targetPos) {
                     e.mesh.lookAt(targetPos.x, 0, targetPos.z);
                     const tDist = e.mesh.position.distanceTo(targetPos);
-                    
-                    // 強化：敵の移動速度アップ(9->11)
                     const enemyMoveSpeed = isFleeing ? 13 * delta : 11 * delta;
 
                     if (isFleeing || tDist > 6.0) {
@@ -251,7 +250,6 @@
                             }
                         } else { e.mesh.position.x += sX; e.mesh.position.z += sZ; }
                     } else if (e.attackCooldown <= 0 && !isFleeing) {
-                        // 強化：攻撃間隔短縮 (1.6 -> 1.2)
                         e.attackCooldown = 1.2;
                         e.stand.visible = true;
                         let count = 0;
@@ -262,7 +260,7 @@
                             e.stand.position.y = 1.0 + (Math.random()-0.5);
                             e.stand.lookAt(targetPos);
                             count++;
-                        }, 30); // 強化：ラッシュ速度アップ
+                        }, 30);
                         if (targetPos === player.position) { if (playerSH > 0) playerSH -= 12; else playerHP -= 12; }
                     }
                 }
