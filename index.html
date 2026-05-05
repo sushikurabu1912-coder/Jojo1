@@ -2,11 +2,11 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Jojo Tofu Survivor - Map Edition</title>
+    <title>Jojo Tofu Survivor - Collision Edition</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #1a0022; font-family: 'MS Gothic', sans-serif; }
-        #ui { position: absolute; bottom: 20px; left: 20px; color: #ff00ff; text-shadow: 2px 2px #00ffff; font-size: 28px; font-weight: bold; pointer-events: none; }
-        #instructions { position: absolute; top: 10px; left: 10px; color: white; background: rgba(0,0,0,0.7); padding: 15px; border: 2px solid #ff00ff; border-radius: 10px; pointer-events: none; }
+        body { margin: 0; overflow: hidden; background: #87CEEB; font-family: 'MS Gothic', sans-serif; }
+        #ui { position: absolute; bottom: 20px; left: 20px; color: #fff; text-shadow: 2px 2px #000; font-size: 28px; font-weight: bold; pointer-events: none; }
+        #instructions { position: absolute; top: 10px; left: 10px; color: #000; background: rgba(255,255,255,0.8); padding: 15px; border: 2px solid #333; border-radius: 10px; pointer-events: none; }
     </style>
 </head>
 <body>
@@ -15,109 +15,108 @@
         WASD：移動 / 矢印キー：視点操作<br>
         <b>スペースキー：スタンドラッシュ</b>
     </div>
-    <div id="ui">TOFU DISTRICT</div>
+    <div id="ui">BRIGHT DISTRICT</div>
 
     <script type="module">
         import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.module.min.js';
 
         // --- 基本設定 ---
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x1a0022); 
-        scene.fog = new THREE.FogExp2(0x1a0022, 0.015);
-
+        scene.background = new THREE.Color(0x87CEEB); // 爽やかな青空
+        
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
 
-        // 明るめの環境光とスポットライト
-        const ambientLight = new THREE.AmbientLight(0x404040, 2);
+        // --- ライティング（大幅に明るく） ---
+        const ambientLight = new THREE.AmbientLight(0xffffff, 1.2); // 環境光を強く
         scene.add(ambientLight);
-        const sunLight = new THREE.DirectionalLight(0xffffff, 2);
-        sunLight.position.set(10, 20, 10);
+        const sunLight = new THREE.DirectionalLight(0xffffff, 1.5); // 太陽光
+        sunLight.position.set(50, 100, 50);
         scene.add(sunLight);
 
-        // --- ステージ生成 ---
-        const floorGeo = new THREE.PlaneGeometry(300, 300);
-        const floorMat = new THREE.MeshPhongMaterial({ color: 0x111111 });
-        const floor = new THREE.Mesh(floorGeo, floorMat);
+        // --- ステージ生成と当たり判定データ ---
+        const obstacles = []; // 当たり判定用の配列
+        const floor = new THREE.Mesh(new THREE.PlaneGeometry(300, 300), new THREE.MeshPhongMaterial({ color: 0x999999 }));
         floor.rotation.x = -Math.PI / 2;
         scene.add(floor);
 
-        // 様々な大きさの立方体（ビル）を配置
-        function createBuilding(x, z, width, height, depth, color) {
-            const geo = new THREE.BoxGeometry(width, height, depth);
+        function createBuilding(x, z, w, h, d, color) {
+            const geo = new THREE.BoxGeometry(w, h, d);
             const mat = new THREE.MeshPhongMaterial({ color: color });
             const mesh = new THREE.Mesh(geo, mat);
-            mesh.position.set(x, height / 2, z); // 地面に接するように配置
+            mesh.position.set(x, h / 2, z);
             scene.add(mesh);
+
+            // 当たり判定用のデータを保存（AABB方式）
+            obstacles.push({
+                minX: x - w/2, maxX: x + w/2,
+                minZ: z - d/2, maxZ: z + d/2
+            });
         }
 
-        // マップの自動生成（ランダム配置）
-        const colors = [0x442266, 0x224466, 0x333333, 0x552244];
-        for (let i = 0; i < 60; i++) {
+        // マップ生成
+        const colors = [0xdd5555, 0x55dd55, 0x5555dd, 0xeeee55];
+        for (let i = 0; i < 50; i++) {
             const x = Math.random() * 200 - 100;
             const z = Math.random() * 200 - 100;
-            
-            // プレイヤーの初期地点(0,0)付近には置かない
-            if (Math.abs(x) < 10 && Math.abs(z) < 10) continue;
+            if (Math.abs(x) < 15 && Math.abs(z) < 15) continue;
 
-            const w = Math.random() * 8 + 2;
-            const h = Math.random() * 25 + 2;
-            const d = Math.random() * 8 + 2;
-            const col = colors[Math.floor(Math.random() * colors.length)];
-            
-            createBuilding(x, z, w, h, d, col);
+            const w = Math.random() * 6 + 4;
+            const h = Math.random() * 20 + 5;
+            const d = Math.random() * 6 + 4;
+            createBuilding(x, z, w, h, d, colors[i % colors.length]);
         }
 
         // 外周の壁
-        createBuilding(0, 150, 300, 40, 5, 0x110011);
-        createBuilding(0, -150, 300, 40, 5, 0x110011);
-        createBuilding(150, 0, 5, 40, 300, 0x110011);
-        createBuilding(-150, 0, 5, 40, 300, 0x110011);
+        createBuilding(0, 150, 300, 20, 5, 0x333333);
+        createBuilding(0, -150, 300, 20, 5, 0x333333);
+        createBuilding(150, 0, 5, 20, 300, 0x333333);
+        createBuilding(-150, 0, 5, 20, 300, 0x333333);
 
-        // --- プレイヤー（自分豆腐） ---
+        // --- プレイヤー ---
         const playerGroup = new THREE.Group();
         scene.add(playerGroup);
-
-        const playerBody = new THREE.Mesh(
-            new THREE.BoxGeometry(1, 1, 1), 
-            new THREE.MeshPhongMaterial({ color: 0xffffff })
-        );
+        const playerBody = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshPhongMaterial({ color: 0xffffff }));
         playerBody.position.y = 0.5;
         playerGroup.add(playerBody);
 
-        // TPSカメラ
         const cameraOffset = new THREE.Vector3(0, 3, 6); 
         playerGroup.add(camera);
         camera.position.copy(cameraOffset);
         camera.lookAt(new THREE.Vector3(0, 1, -5));
 
-        // スタンド（赤い豆腐）
-        const stand = new THREE.Mesh(
-            new THREE.BoxGeometry(1.2, 1.2, 1.2), 
-            new THREE.MeshPhongMaterial({ color: 0xff0000, emissive: 0x330000 }) 
-        );
+        const stand = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), new THREE.MeshPhongMaterial({ color: 0xff0000 }));
         stand.position.set(0, 0.6, -2.5);
         stand.visible = false;
         playerGroup.add(stand);
 
-        // --- 入力とアクション ---
+        // --- 入力と衝突判定ロジック ---
         const keys = {};
         document.addEventListener('keydown', (e) => keys[e.code] = true);
         document.addEventListener('keyup', (e) => keys[e.code] = false);
+
+        function checkCollision(newX, newZ) {
+            const pSize = 0.5; // プレイヤーの半径
+            for (let obs of obstacles) {
+                if (newX + pSize > obs.minX && newX - pSize < obs.maxX &&
+                    newZ + pSize > obs.minZ && newZ - pSize < obs.maxZ) {
+                    return true; // 衝突！
+                }
+            }
+            return false;
+        }
 
         let isAttacking = false;
         function attack() {
             if(isAttacking) return;
             isAttacking = true;
             stand.visible = true;
-
             const rushEffect = setInterval(() => {
                 stand.position.x = (Math.random() - 0.5) * 0.8;
                 stand.position.y = 0.6 + (Math.random() - 0.5) * 0.5;
             }, 30);
-
             setTimeout(() => {
                 clearInterval(rushEffect);
                 stand.visible = false;
@@ -137,17 +136,33 @@
             if (keys['ArrowRight']) playerGroup.rotation.y -= 2.5 * delta;
 
             const moveSpeed = 15 * delta;
-            if (keys['KeyW']) playerGroup.translateZ(-moveSpeed);
-            if (keys['KeyS']) playerGroup.translateZ(moveSpeed);
-            if (keys['KeyA']) playerGroup.translateX(-moveSpeed);
-            if (keys['KeyD']) playerGroup.translateX(moveSpeed);
+            // 次の移動予定位置を計算
+            let nextX = playerGroup.position.x;
+            let nextZ = playerGroup.position.z;
+
+            // 簡易的な移動ベクトル計算
+            const dirZ = (keys['KeyW'] ? -1 : 0) + (keys['KeyS'] ? 1 : 0);
+            const dirX = (keys['KeyA'] ? -1 : 0) + (keys['KeyD'] ? 1 : 0);
+
+            if (dirZ !== 0 || dirX !== 0) {
+                // 向いている方向に基づいて移動量を算出
+                const angle = playerGroup.rotation.y;
+                const localZ = dirZ * moveSpeed;
+                const localX = dirX * moveSpeed;
+                
+                nextX += Math.sin(angle) * localZ + Math.cos(angle) * localX;
+                nextZ += Math.cos(angle) * localZ - Math.sin(angle) * localX;
+
+                // 衝突判定：移動先が壁でなければ移動を許可
+                if (!checkCollision(nextX, playerGroup.position.z)) playerGroup.position.x = nextX;
+                if (!checkCollision(playerGroup.position.x, nextZ)) playerGroup.position.z = nextZ;
+            }
 
             if (keys['Space']) attack();
-
             renderer.render(scene, camera);
         }
 
-            animate();
+        animate();
 
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
