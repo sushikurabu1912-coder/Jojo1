@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Web Survivor Prototype</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Arial', sans-serif; }
+        #ui { position: absolute; bottom: 20px; left: 20px; color: yellow; text-shadow: 2px 2px #f0f; font-size: 24px; pointer-events: none; }
+        #crosshair { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-size: 20px; pointer-events: none; }
+        #instructions { position: absolute; top: 10px; left: 10px; color: white; background: rgba(0,0,0,0.5); padding: 10px; border-radius: 5px; }
+    </style>
+</head>
+<body>
+
+    <div id="instructions">
+        WASD: 移動 | Click: スタンド攻撃 | Mouse: 視点操作<br>
+        ※画面をクリックしてポインターロックを開始してください
+    </div>
+    <div id="crosshair">+</div>
+    <div id="ui">HP: <span id="hp">100</span> | SURVIVORS: 10</div>
+
+    <!-- Three.js Library -->
+    <script type="module">
+        import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.module.min.js';
+
+        // --- シーン設定 ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x220033); // 杜王町っぽい紫の空
+        scene.fog = new THREE.FogExp2(0x220033, 0.02);
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // --- ライティング ---
+        const light = new THREE.HemisphereLight(0xffffff, 0x444444, 1.5);
+        scene.add(light);
+
+        // --- 地面 (ステージ) ---
+        const floorGeo = new THREE.PlaneGeometry(200, 200);
+        const floorMat = new THREE.MeshPhongMaterial({ color: 0x444444 });
+        const floor = new THREE.Mesh(floorGeo, floorMat);
+        floor.rotation.x = -Math.PI / 2;
+        scene.add(floor);
+
+        // シンプルな障害物（ビルに見立てた箱）
+        for(let i=0; i<20; i++) {
+            const boxGeo = new THREE.BoxGeometry(5, Math.random()*20+5, 5);
+            const boxMat = new THREE.MeshPhongMaterial({ color: 0x6666bb });
+            const box = new THREE.Mesh(boxGeo, boxMat);
+            box.position.set(Math.random()*100-50, 0, Math.random()*100-50);
+            box.position.y = box.geometry.parameters.height / 2;
+            scene.add(box);
+        }
+
+        // --- プレイヤー & スタンド ---
+        const player = new THREE.Group();
+        scene.add(player);
+        player.position.y = 1.6;
+        player.add(camera); // カメラをプレイヤーに固定
+
+        // スタンド（攻撃時に出る腕の代わり）
+        const standGeo = new THREE.BoxGeometry(0.5, 0.5, 2);
+        const standMat = new THREE.MeshPhongMaterial({ color: 0x00ffff, emissive: 0x00ffff });
+        const standArm = new THREE.Mesh(standGeo, standMat);
+        standArm.position.set(0.5, -0.5, -1.5);
+        standArm.visible = false;
+        player.add(standArm);
+
+        // --- 操作系 ---
+        let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
+        const velocity = new THREE.Vector3();
+        const direction = new THREE.Vector3();
+
+        document.addEventListener('mousedown', () => {
+            document.body.requestPointerLock();
+            attack();
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if(e.code === 'KeyW') moveForward = true;
+            if(e.code === 'KeyS') moveBackward = true;
+            if(e.code === 'KeyA') moveLeft = true;
+            if(e.code === 'KeyD') moveRight = true;
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if(e.code === 'KeyW') moveForward = false;
+            if(e.code === 'KeyS') moveBackward = false;
+            if(e.code === 'KeyA') moveLeft = false;
+            if(e.code === 'KeyD') moveRight = false;
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (document.pointerLockElement === document.body) {
+                player.rotation.y -= e.movementX * 0.002;
+                camera.rotation.x -= e.movementY * 0.002;
+                camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, camera.rotation.x));
+            }
+        });
+
+        // --- 攻撃アクション (ラッシュ) ---
+        function attack() {
+            if(standArm.visible) return;
+            standArm.visible = true;
+            // 簡易的なアニメーション
+            setTimeout(() => { standArm.visible = false; }, 150);
+        }
+
+        // --- メインループ ---
+        const clock = new THREE.Clock();
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+
+            // 移動計算
+            velocity.x -= velocity.x * 10.0 * delta;
+            velocity.z -= velocity.z * 10.0 * delta;
+
+            direction.z = Number(moveForward) - Number(moveBackward);
+            direction.x = Number(moveRight) - Number(moveLeft);
+            direction.normalize();
+
+            if (moveForward || moveBackward) velocity.z -= direction.z * 400.0 * delta;
+            if (moveLeft || moveRight) velocity.x -= direction.x * 400.0 * delta;
+
+            player.translateX(-velocity.x * delta);
+            player.translateZ(-velocity.z * delta);
+
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+        // リサイズ対応
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
