@@ -2,18 +2,18 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Jojo Tofu Survivor - Evolution</title>
+    <title>Jojo Tofu Survivor - Colorful City</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: 'MS Gothic', sans-serif; }
-        #ui-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+        #ui-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 20; }
         #area-ui { position: absolute; top: 10px; right: 10px; color: #f0f; background: rgba(0,0,0,0.8); padding: 10px; border: 2px solid #f0f; border-radius: 5px; font-weight: bold; text-align: right; }
-        #status-ui { position: absolute; bottom: 20px; left: 20px; color: #fff; text-shadow: 2px 2px #000; z-index: 100; }
+        #status-ui { position: absolute; bottom: 20px; left: 20px; color: #fff; text-shadow: 2px 2px #000; }
         .bar-container { width: 220px; height: 14px; background: #333; border: 2px solid #fff; margin-bottom: 8px; }
         #hp-fill { width: 100%; height: 100%; background: #0f0; transition: width 0.1s; }
         #sh-fill { width: 0%; height: 100%; background: #0cf; transition: width 0.1s; }
         #timestop-label { color: #ff0; font-size: 20px; font-weight: bold; margin-bottom: 5px; }
         #warning { position: absolute; top: 30%; left: 50%; transform: translateX(-50%); color: #ff0000; font-size: 40px; font-weight: bold; display: none; text-shadow: 3px 3px #000; }
-        #time-stop-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; mix-blend-mode: difference; background: white; display: none; z-index: 10; }
+        #time-stop-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; mix-blend-mode: difference; background: white; display: none; z-index: 50; }
     </style>
 </head>
 <body>
@@ -33,42 +33,52 @@
         import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.module.min.js';
 
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x87CEEB);
+        scene.background = new THREE.Color(0x000022); // 夜の雰囲気
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
 
-        const ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
         scene.add(ambientLight);
-        const sunLight = new THREE.DirectionalLight(0xffffff, 1.2);
+        const sunLight = new THREE.DirectionalLight(0xffffff, 1.0);
         sunLight.position.set(50, 100, 50);
         scene.add(sunLight);
 
         const obstacles = [];
-        const floor = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), new THREE.MeshPhongMaterial({ color: 0x555555 }));
+        const floor = new THREE.Mesh(new THREE.PlaneGeometry(800, 800), new THREE.MeshPhongMaterial({ color: 0x222222 }));
         floor.rotation.x = -Math.PI / 2;
         scene.add(floor);
 
-        // ビルの均等配置
+        // カラフルなビルの配置
+        const colors = [0xff5555, 0x55ff55, 0x5555ff, 0xffff55, 0xff55ff, 0x55ffff, 0xff9900];
         const gridSize = 35;
         for (let x = -210; x <= 210; x += gridSize) {
             for (let z = -210; z <= 210; z += gridSize) {
                 if (Math.abs(x) < 20 && Math.abs(z) < 20) continue;
                 const offsetX = (Math.random() - 0.5) * 25;
                 const offsetZ = (Math.random() - 0.5) * 25;
-                const w = 12, h = Math.random() * 30 + 10, d = 12;
-                const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshPhongMaterial({ color: 0x333333 }));
+                const w = 12, h = Math.random() * 40 + 10, d = 12;
+                const randomColor = colors[Math.floor(Math.random() * colors.length)];
+                const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshPhongMaterial({ color: randomColor }));
                 mesh.position.set(x + offsetX, h / 2, z + offsetZ);
                 scene.add(mesh);
-                obstacles.push({ x: mesh.position.x, z: mesh.position.z, w, d, minX: mesh.position.x - w/2 - 1, maxX: mesh.position.x + w/2 + 1, minZ: mesh.position.z - d/2 - 1, maxZ: mesh.position.z + d/2 + 1 });
+                obstacles.push({ minX: mesh.position.x - w/2 - 1, maxX: mesh.position.x + w/2 + 1, minZ: mesh.position.z - d/2 - 1, maxZ: mesh.position.z + d/2 + 1 });
             }
         }
 
-        const areaCircle = new THREE.Mesh(new THREE.RingGeometry(1, 600, 64), new THREE.MeshBasicMaterial({ color: 0x8800ff, side: THREE.DoubleSide, transparent: true, opacity: 0.5 }));
-        areaCircle.rotation.x = -Math.PI / 2;
-        areaCircle.position.y = 0.2;
-        scene.add(areaCircle);
+        // 安全地帯の外側（紫の壁）
+        // 大きな円柱の内側をくり抜くのではなく、外側に巨大なチューブを置く
+        const areaWallGeom = new THREE.CylinderGeometry(1, 1, 300, 64, 1, true);
+        const areaWallMat = new THREE.MeshBasicMaterial({ 
+            color: 0x8800ff, 
+            side: THREE.BackSide, 
+            transparent: true, 
+            opacity: 0.3 
+        });
+        const areaWall = new THREE.Mesh(areaWallGeom, areaWallMat);
+        areaWall.position.y = 150;
+        scene.add(areaWall);
 
         let areaRadius = 180, timeElapsed = 0;
         const player = new THREE.Group();
@@ -77,7 +87,7 @@
         playerBody.position.y = 0.5;
         player.add(playerBody);
         player.add(camera);
-        camera.position.set(0, 5, 8);
+        camera.position.set(0, 6, 10);
         camera.lookAt(0, 1, -5);
 
         const stand = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), new THREE.MeshPhongMaterial({ color: 0xff0000, emissive: 0xff0000 }));
@@ -114,7 +124,6 @@
                     isTimeStopped = false; 
                     timeStopCooldown = 15; 
                     document.getElementById('time-stop-overlay').style.display = 'none';
-                    // 停止中にやられた敵を一斉に消去
                     enemies.forEach(e => { if(e.pendingDeath) { e.alive = false; scene.remove(e.mesh); scene.remove(e.stand); }});
                 }, 5000);
             }
@@ -148,10 +157,13 @@
         function animate() {
             requestAnimationFrame(animate);
             const delta = clock.getDelta();
+            
             if (!isTimeStopped) {
                 timeElapsed += delta;
                 if (areaRadius > 5) areaRadius -= delta * 1.8;
-                areaCircle.geometry = new THREE.RingGeometry(areaRadius, 600, 64);
+                // 紫の壁のサイズを更新
+                areaWall.scale.set(areaRadius, 1, areaRadius);
+                
                 if (timeStopCooldown > 0) {
                     timeStopCooldown -= delta;
                     document.getElementById('timestop-label').innerText = `TS COOLDOWN: ${Math.ceil(timeStopCooldown)}s`;
@@ -160,7 +172,7 @@
                 }
             }
 
-            const currentDmg = 8 * (1.5 + (timeElapsed / 40));
+            const currentDmg = 10 * (1.5 + (timeElapsed / 40));
             document.getElementById('area-radius').innerText = Math.floor(areaRadius);
 
             const distP = Math.sqrt(player.position.x**2 + player.position.z**2);
@@ -169,7 +181,6 @@
                 document.getElementById('warning').style.display = 'block';
             } else { document.getElementById('warning').style.display = 'none'; }
 
-            // プレイヤー移動（停止中は1.5倍）
             const speedMultiplier = isTimeStopped ? 1.5 : 1.0;
             if (keys['ArrowLeft']) player.rotation.y += 3 * delta;
             if (keys['ArrowRight']) player.rotation.y -= 3 * delta;
@@ -188,11 +199,9 @@
             enemies.forEach(e => {
                 if(!e.alive) return;
                 if(!e.pendingDeath) aliveCount++;
-                
-                // 通常時のみHPチェックと消去
                 if (!isTimeStopped && e.hp <= 0) { e.alive = false; scene.remove(e.mesh); scene.remove(e.stand); return; }
                 if (isTimeStopped) {
-                    if (e.pendingDeath) e.mesh.children[0].material.color.set(0x444444); // 死亡予定の敵を暗くする演出
+                    if (e.pendingDeath) e.mesh.children[0].material.color.set(0x444444);
                     return; 
                 }
 
@@ -211,22 +220,15 @@
                     if (tDist > 3.5) {
                         const moveAngle = e.mesh.rotation.y;
                         let sX = Math.sin(moveAngle) * 9 * delta, sZ = Math.cos(moveAngle) * 9 * delta;
-                        
-                        // ビル回避ロジック（簡易レイキャスト風）
                         if (checkCollision(e.mesh.position.x + sX, e.mesh.position.z + sZ)) {
-                            // 左右45度に避ける試行
                             const tryAngles = [Math.PI/4, -Math.PI/4, Math.PI/2, -Math.PI/2];
-                            let avoided = false;
                             for(let ta of tryAngles) {
                                 let asX = Math.sin(moveAngle + ta) * 9 * delta, asZ = Math.cos(moveAngle + ta) * 9 * delta;
                                 if (!checkCollision(e.mesh.position.x + asX, e.mesh.position.z + asZ)) {
-                                    e.mesh.position.x += asX; e.mesh.position.z += asZ;
-                                    avoided = true; break;
+                                    e.mesh.position.x += asX; e.mesh.position.z += asZ; break;
                                 }
                             }
-                        } else {
-                            e.mesh.position.x += sX; e.mesh.position.z += sZ;
-                        }
+                        } else { e.mesh.position.x += sX; e.mesh.position.z += sZ; }
                     } else if (e.attackCooldown <= 0) {
                         e.attackCooldown = 1.6;
                         e.stand.visible = true;
@@ -239,8 +241,6 @@
                             e.stand.lookAt(target.position);
                             count++;
                         }, 35);
-                        
-                        // ダメージ3倍（合計4x3=12）
                         if (target === player) { if (playerSH > 0) playerSH -= 12; else playerHP -= 12; }
                         else { enemies.forEach(ref => { if(ref.mesh === target) ref.hp -= 30; }); }
                     }
