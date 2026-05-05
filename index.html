@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Jojo Tofu Survivor - Attack Cooldown Update</title>
+    <title>Jojo Tofu Survivor - Full Items Edition</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: 'MS Gothic', sans-serif; }
         #ui-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 20; }
@@ -13,6 +13,7 @@
         #sh-fill { width: 0%; height: 100%; background: #0cf; transition: width 0.1s; }
         #timestop-label { color: #ff0; font-size: 18px; font-weight: bold; margin-bottom: 5px; }
         #attack-label { color: #f00; font-size: 18px; font-weight: bold; margin-bottom: 5px; }
+        #buff-label { color: #ff00ff; font-size: 16px; font-weight: bold; }
         #warning { position: absolute; top: 30%; left: 50%; transform: translateX(-50%); color: #ff0000; font-size: 40px; font-weight: bold; display: none; text-shadow: 3px 3px #000; }
         #time-stop-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; mix-blend-mode: difference; background: white; display: none; z-index: 50; }
     </style>
@@ -24,6 +25,7 @@
         <div id="warning">⚠️エリア外ダメージ⚠️</div>
         <div id="area-ui">SURVIVORS: <span id="survivors-count">--</span><br>RADIUS: <span id="area-radius">--</span></div>
         <div id="status-ui">
+            <div id="buff-label"></div>
             <div id="attack-label">ATTACK: READY (SPACE)</div>
             <div id="timestop-label">TIME STOP: READY (E)</div>
             SHIELD <div class="bar-container"><div id="sh-fill"></div></div>
@@ -89,15 +91,21 @@
         player.add(stand);
 
         let playerHP = 100, playerSH = 0, isTimeStopped = false, timeStopCooldown = 0;
-        let playerAttackCooldown = 0; // プレイヤーの攻撃クールダウン
+        let playerAttackCooldown = 0, atkBuffTimer = 0;
 
         const items = [];
         function spawnItem(x, z) {
-            const isShield = Math.random() > 0.4;
-            const mesh = new THREE.Mesh(new THREE.OctahedronGeometry(0.7), new THREE.MeshPhongMaterial({ color: isShield ? 0x00ccff : 0x00ff00 }));
+            const rand = Math.random();
+            let type, color;
+            if (rand < 0.4) { type = 'HP'; color = 0x00ff00; } // 緑: HP
+            else if (rand < 0.7) { type = 'SH'; color = 0x00ccff; } // 青: SH
+            else if (rand < 0.9) { type = 'ATK'; color = 0xff0000; } // 赤: ATK倍
+            else { type = 'CD'; color = 0xffff00; } // 黄: 時停止リセット
+
+            const mesh = new THREE.Mesh(new THREE.OctahedronGeometry(0.7), new THREE.MeshPhongMaterial({ color: color, emissive: color, emissiveIntensity: 0.5 }));
             mesh.position.set(x, 0.8, z);
             scene.add(mesh);
-            items.push({ mesh, type: isShield ? 'SH' : 'HP' });
+            items.push({ mesh, type });
         }
 
         const enemies = [];
@@ -126,7 +134,7 @@
                 setTimeout(() => { 
                     isTimeStopped = false; timeStopCooldown = 18; document.getElementById('time-stop-overlay').style.display = 'none';
                     enemies.forEach(e => { if(e.pendingDeath) { 
-                        if(Math.random() < 0.4) spawnItem(e.mesh.position.x, e.mesh.position.z);
+                        if(Math.random() < 0.5) spawnItem(e.mesh.position.x, e.mesh.position.z);
                         e.alive = false; scene.remove(e.mesh); scene.remove(e.stand); 
                     }});
                 }, 5000);
@@ -141,17 +149,18 @@
 
         let isAttacking = false;
         function attack() {
-            if(isAttacking || playerAttackCooldown > 0) return; // クールダウン中なら何もしない
+            if(isAttacking || playerAttackCooldown > 0) return;
             isAttacking = true;
-            playerAttackCooldown = 1.2; // 攻撃クールダウンセット
+            playerAttackCooldown = 1.2;
             stand.visible = true;
+            const dmgPerHit = (atkBuffTimer > 0) ? 8 : 4; // バフ中はダメージ2倍
             const rush = setInterval(() => {
                 stand.position.set((Math.random()-0.5)*1.2, 0.7+(Math.random()-0.5)*1.2, -2.8 - (Math.random()*1.2));
                 const standPos = new THREE.Vector3();
                 stand.getWorldPosition(standPos);
                 enemies.forEach(e => { 
                     if(e.alive && !e.pendingDeath && standPos.distanceTo(e.mesh.position) < 5.0) { 
-                        e.hp -= 4; e.hateTimer = 12;
+                        e.hp -= dmgPerHit; e.hateTimer = 12;
                         if(e.hp <= 0 && isTimeStopped) e.pendingDeath = true;
                     } 
                 });
@@ -174,15 +183,17 @@
                 } else { document.getElementById('timestop-label').innerText = "TIME STOP: READY (E)"; }
             }
 
-            // プレイヤー攻撃クールダウンの更新
             if (playerAttackCooldown > 0) {
                 playerAttackCooldown -= delta;
                 document.getElementById('attack-label').innerText = `ATTACK CD: ${playerAttackCooldown.toFixed(1)}s`;
-                document.getElementById('attack-label').style.color = "#555";
             } else {
                 document.getElementById('attack-label').innerText = "ATTACK: READY (SPACE)";
-                document.getElementById('attack-label').style.color = "#f00";
             }
+
+            if (atkBuffTimer > 0) {
+                atkBuffTimer -= delta;
+                document.getElementById('buff-label').innerText = `🔥 DAMAGE x2: ${Math.ceil(atkBuffTimer)}s`;
+            } else { document.getElementById('buff-label').innerText = ""; }
 
             const currentDmg = 12 * (1.5 + (timeElapsed / 50));
             document.getElementById('area-radius').innerText = Math.floor(areaRadius);
@@ -193,10 +204,9 @@
                 document.getElementById('warning').style.display = 'block';
             } else { document.getElementById('warning').style.display = 'none'; }
 
-            const speedMultiplier = 1.0; 
             if (keys['ArrowLeft']) player.rotation.y += 3.2 * delta;
             if (keys['ArrowRight']) player.rotation.y -= 3.2 * delta;
-            const moveSpeed = 20 * delta * speedMultiplier, angle = player.rotation.y;
+            const moveSpeed = 20 * delta, angle = player.rotation.y;
             const dirZ = (keys['KeyW'] ? -1 : 0) + (keys['KeyS'] ? 1 : 0);
             const dirX = (keys['KeyA'] ? -1 : 0) + (keys['KeyD'] ? 1 : 0);
             if (dirZ !== 0 || dirX !== 0) {
@@ -211,7 +221,9 @@
                 it.mesh.rotation.y += delta * 3;
                 if (it.mesh.position.distanceTo(player.position) < 2.5) {
                     if (it.type === 'HP') playerHP = Math.min(100, playerHP + 35);
-                    else playerSH = Math.min(100, playerSH + 55);
+                    if (it.type === 'SH') playerSH = Math.min(100, playerSH + 55);
+                    if (it.type === 'ATK') atkBuffTimer = 10;
+                    if (it.type === 'CD') timeStopCooldown = 0;
                     scene.remove(it.mesh);
                     items.splice(idx, 1);
                 }
@@ -222,7 +234,7 @@
                 if(!e.alive) return;
                 if(!e.pendingDeath) aliveCount++;
                 if (!isTimeStopped && e.hp <= 0) { 
-                    if(Math.random() < 0.35) spawnItem(e.mesh.position.x, e.mesh.position.z);
+                    if(Math.random() < 0.45) spawnItem(e.mesh.position.x, e.mesh.position.z);
                     e.alive = false; scene.remove(e.mesh); scene.remove(e.stand); return; 
                 }
                 if (isTimeStopped) { if (e.pendingDeath) e.mesh.children[0].material.color.set(0x333333); return; }
@@ -231,17 +243,11 @@
                 const dP = e.mesh.position.distanceTo(player.position);
                 if (dCenter > areaRadius) e.hp -= currentDmg * delta;
 
-                let targetPos = null;
-                let isFleeing = false;
-
-                if (dCenter > areaRadius * 0.85) {
-                    targetPos = new THREE.Vector3(0, 0, 0);
-                    isFleeing = true;
-                } else {
+                let targetPos = null, isFleeing = false;
+                if (dCenter > areaRadius * 0.85) { targetPos = new THREE.Vector3(0, 0, 0); isFleeing = true; }
+                else {
                     let targetObj = (e.hateTimer > 0 || dP < 40) ? player : null;
-                    if (!targetObj) enemies.forEach(o => { 
-                        if (o !== e && o.alive && e.mesh.position.distanceTo(o.mesh.position) < 40) targetObj = o.mesh; 
-                    });
+                    if (!targetObj) enemies.forEach(o => { if (o !== e && o.alive && e.mesh.position.distanceTo(o.mesh.position) < 40) targetObj = o.mesh; });
                     if (targetObj) targetPos = targetObj.position;
                 }
 
@@ -249,30 +255,18 @@
                     e.mesh.lookAt(targetPos.x, 0, targetPos.z);
                     const tDist = e.mesh.position.distanceTo(targetPos);
                     const enemyMoveSpeed = isFleeing ? 13 * delta : 11 * delta;
-
                     if (isFleeing || tDist > 6.0) {
                         const moveAngle = e.mesh.rotation.y;
                         let sX = Math.sin(moveAngle) * enemyMoveSpeed, sZ = Math.cos(moveAngle) * enemyMoveSpeed;
-                        if (checkCollision(e.mesh.position.x + sX, e.mesh.position.z + sZ)) {
-                            const tryAngles = [Math.PI/3, -Math.PI/3, Math.PI/2, -Math.PI/2];
-                            for(let ta of tryAngles) {
-                                let asX = Math.sin(moveAngle + ta) * enemyMoveSpeed, asZ = Math.cos(moveAngle + ta) * enemyMoveSpeed;
-                                if (!checkCollision(e.mesh.position.x + asX, e.mesh.position.z + asZ)) {
-                                    e.mesh.position.x += asX; e.mesh.position.z += asZ; break;
-                                }
-                            }
-                        } else { e.mesh.position.x += sX; e.mesh.position.z += sZ; }
+                        if (!checkCollision(e.mesh.position.x + sX, e.mesh.position.z + sZ)) { e.mesh.position.x += sX; e.mesh.position.z += sZ; }
                     } else if (e.attackCooldown <= 0 && !isFleeing) {
-                        e.attackCooldown = 1.2;
-                        e.stand.visible = true;
+                        e.attackCooldown = 1.2; e.stand.visible = true;
                         let count = 0;
                         const eRush = setInterval(() => {
                             if (!e.alive || isTimeStopped || count > 15) { clearInterval(eRush); e.stand.visible = false; return; }
                             const dir = new THREE.Vector3().subVectors(targetPos, e.mesh.position).normalize();
                             e.stand.position.copy(e.mesh.position).add(dir.multiplyScalar(tDist * 0.85 + Math.random()));
-                            e.stand.position.y = 1.0 + (Math.random()-0.5);
-                            e.stand.lookAt(targetPos);
-                            count++;
+                            e.stand.position.y = 1.0 + (Math.random()-0.5); e.stand.lookAt(targetPos); count++;
                         }, 30);
                         if (targetPos === player.position) { if (playerSH > 0) playerSH -= 12; else playerHP -= 12; }
                     }
