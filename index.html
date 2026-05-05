@@ -2,9 +2,10 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Jojo Tofu Survivor - Item Fix & Balance</title>
+    <title>Jojo Tofu Survivor - Item Rush & Narrow Search</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: 'MS Gothic', sans-serif; }
+        /* UIスタイルは維持 */
         #ui-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 20; }
         #area-ui { position: absolute; top: 10px; right: 10px; color: #f0f; background: rgba(0,0,0,0.8); padding: 10px; border: 2px solid #f0f; border-radius: 5px; font-weight: bold; text-align: right; }
         #status-ui { position: absolute; bottom: 20px; left: 20px; color: #fff; text-shadow: 2px 2px #000; }
@@ -59,13 +60,11 @@
         for (let x = -240; x <= 240; x += gridSize) {
             for (let z = -240; z <= 240; z += gridSize) {
                 if (Math.abs(x) < 25 && Math.abs(z) < 25) continue;
-                const offsetX = (Math.random() - 0.5) * 30;
-                const offsetZ = (Math.random() - 0.5) * 30;
+                const offsetX = (Math.random() - 0.5) * 30, offsetZ = (Math.random() - 0.5) * 30;
                 const w = 14, h = Math.random() * 50 + 15, d = 14;
                 const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshPhongMaterial({ color: colors[Math.floor(Math.random() * colors.length)] }));
                 mesh.position.set(x + offsetX, h / 2, z + offsetZ);
                 scene.add(mesh);
-                // 判定用マージンを少し広めに設定 (アイテムが壁際に埋まるのを防ぐ)
                 obstacles.push({ minX: mesh.position.x - w/2 - 1.5, maxX: mesh.position.x + w/2 + 1.5, minZ: mesh.position.z - d/2 - 1.5, maxZ: mesh.position.z + d/2 + 1.5 });
             }
         }
@@ -94,7 +93,6 @@
         let playerHP = 100, playerSH = 0, isTimeStopped = false, timeStopCooldown = 0;
         let playerAttackCooldown = 0, atkBuffTimer = 0;
 
-        // 衝突判定関数
         function checkCollision(nX, nZ) {
             for (let obs of obstacles) if (nX > obs.minX && nX < obs.maxX && nZ > obs.minZ && nZ < obs.maxZ) return true;
             return false;
@@ -102,30 +100,24 @@
 
         const items = [];
         function spawnItem(x, z) {
-            // 生成位置がビルの中なら、周囲で空いている場所を探す（簡易的な再配置）
             let finalX = x, finalZ = z;
             if (checkCollision(x, z)) {
                 let found = false;
                 for (let i = 0; i < 8; i++) {
                     let angle = (i / 8) * Math.PI * 2;
-                    let tx = x + Math.cos(angle) * 8;
-                    let tz = z + Math.sin(angle) * 8;
-                    if (!checkCollision(tx, tz)) {
-                        finalX = tx; finalZ = tz; found = true; break;
-                    }
+                    let tx = x + Math.cos(angle) * 8, tz = z + Math.sin(angle) * 8;
+                    if (!checkCollision(tx, tz)) { finalX = tx; finalZ = tz; found = true; break; }
                 }
-                if (!found) return; // 置き場所がなければ生成しない
+                if (!found) return;
             }
-
             const rand = Math.random();
             let type, color;
-            if (rand < 0.5) { type = 'HP'; color = 0x00ff00; }      // 50%: HP
-            else if (rand < 0.85) { type = 'SH'; color = 0x00ccff; } // 35%: SH
-            else if (rand < 0.95) { type = 'ATK'; color = 0xff0000; } // 10%: ATK
-            else { type = 'CD'; color = 0xffff00; }                  // 5%: CDリセット
-
+            if (rand < 0.5) { type = 'HP'; color = 0x00ff00; }
+            else if (rand < 0.85) { type = 'SH'; color = 0x00ccff; }
+            else if (rand < 0.95) { type = 'ATK'; color = 0xff0000; }
+            else { type = 'CD'; color = 0xffff00; }
             const mesh = new THREE.Mesh(new THREE.OctahedronGeometry(0.7), new THREE.MeshPhongMaterial({ color: color, emissive: color, emissiveIntensity: 0.5 }));
-            mesh.position.set(finalX, 1.0, finalZ); // 地面から少し浮かせる
+            mesh.position.set(finalX, 1.0, finalZ);
             scene.add(mesh);
             items.push({ mesh, type });
         }
@@ -156,8 +148,8 @@
                 setTimeout(() => { 
                     isTimeStopped = false; timeStopCooldown = 18; document.getElementById('time-stop-overlay').style.display = 'none';
                     enemies.forEach(e => { if(e.pendingDeath) { 
-                        // アイテムドロップ率を低下 (25%に設定)
-                        if(Math.random() < 0.25) spawnItem(e.mesh.position.x, e.mesh.position.z);
+                        // 生成量を3倍(25% -> 75%)に増加
+                        if(Math.random() < 0.75) spawnItem(e.mesh.position.x, e.mesh.position.z);
                         e.alive = false; scene.remove(e.mesh); scene.remove(e.stand); 
                     }});
                 }, 5000);
@@ -168,9 +160,7 @@
         let isAttacking = false;
         function attack() {
             if(isAttacking || playerAttackCooldown > 0) return;
-            isAttacking = true;
-            playerAttackCooldown = 1.2;
-            stand.visible = true;
+            isAttacking = true; playerAttackCooldown = 1.2; stand.visible = true;
             const dmgPerHit = (atkBuffTimer > 0) ? 8 : 4;
             const rush = setInterval(() => {
                 stand.position.set((Math.random()-0.5)*1.2, 0.7+(Math.random()-0.5)*1.2, -2.8 - (Math.random()*1.2));
@@ -190,37 +180,23 @@
         function animate() {
             requestAnimationFrame(animate);
             const delta = Math.min(clock.getDelta(), 0.1);
-            
             if (!isTimeStopped) {
                 timeElapsed += delta;
                 if (areaRadius > 8) areaRadius -= delta * 1.5;
                 areaWall.scale.set(areaRadius, 1, areaRadius);
-                if (timeStopCooldown > 0) {
-                    timeStopCooldown -= delta;
-                    document.getElementById('timestop-label').innerText = `TS COOLDOWN: ${Math.ceil(timeStopCooldown)}s`;
-                } else { document.getElementById('timestop-label').innerText = "TIME STOP: READY (E)"; }
+                if (timeStopCooldown > 0) { timeStopCooldown -= delta; document.getElementById('timestop-label').innerText = `TS COOLDOWN: ${Math.ceil(timeStopCooldown)}s`; }
+                else { document.getElementById('timestop-label').innerText = "TIME STOP: READY (E)"; }
             }
-
-            if (playerAttackCooldown > 0) {
-                playerAttackCooldown -= delta;
-                document.getElementById('attack-label').innerText = `ATTACK CD: ${playerAttackCooldown.toFixed(1)}s`;
-            } else {
-                document.getElementById('attack-label').innerText = "ATTACK: READY (SPACE)";
-            }
-
-            if (atkBuffTimer > 0) {
-                atkBuffTimer -= delta;
-                document.getElementById('buff-label').innerText = `🔥 DAMAGE x2: ${Math.ceil(atkBuffTimer)}s`;
-            } else { document.getElementById('buff-label').innerText = ""; }
+            if (playerAttackCooldown > 0) { playerAttackCooldown -= delta; document.getElementById('attack-label').innerText = `ATTACK CD: ${playerAttackCooldown.toFixed(1)}s`; }
+            else { document.getElementById('attack-label').innerText = "ATTACK: READY (SPACE)"; }
+            if (atkBuffTimer > 0) { atkBuffTimer -= delta; document.getElementById('buff-label').innerText = `🔥 DAMAGE x2: ${Math.ceil(atkBuffTimer)}s`; }
+            else { document.getElementById('buff-label').innerText = ""; }
 
             const currentDmg = 12 * (1.5 + (timeElapsed / 50));
             document.getElementById('area-radius').innerText = Math.floor(areaRadius);
-
             const distP = Math.sqrt(player.position.x**2 + player.position.z**2);
-            if (distP > areaRadius) {
-                playerHP -= currentDmg * delta;
-                document.getElementById('warning').style.display = 'block';
-            } else { document.getElementById('warning').style.display = 'none'; }
+            if (distP > areaRadius) { playerHP -= currentDmg * delta; document.getElementById('warning').style.display = 'block'; }
+            else { document.getElementById('warning').style.display = 'none'; }
 
             if (keys['ArrowLeft']) player.rotation.y += 3.2 * delta;
             if (keys['ArrowRight']) player.rotation.y -= 3.2 * delta;
@@ -242,8 +218,7 @@
                     if (it.type === 'SH') playerSH = Math.min(100, playerSH + 55);
                     if (it.type === 'ATK') atkBuffTimer = 10;
                     if (it.type === 'CD') timeStopCooldown = 0;
-                    scene.remove(it.mesh);
-                    items.splice(idx, 1);
+                    scene.remove(it.mesh); items.splice(idx, 1);
                 }
             });
 
@@ -252,12 +227,11 @@
                 if(!e.alive) return;
                 if(!e.pendingDeath) aliveCount++;
                 if (!isTimeStopped && e.hp <= 0) { 
-                    // アイテムドロップ率を低下 (25%に設定)
-                    if(Math.random() < 0.25) spawnItem(e.mesh.position.x, e.mesh.position.z);
+                    // 通常ドロップも3倍に増加
+                    if(Math.random() < 0.75) spawnItem(e.mesh.position.x, e.mesh.position.z);
                     e.alive = false; scene.remove(e.mesh); scene.remove(e.stand); return; 
                 }
                 if (isTimeStopped) { if (e.pendingDeath) e.mesh.children[0].material.color.set(0x333333); return; }
-
                 const dCenter = Math.sqrt(e.mesh.position.x**2 + e.mesh.position.z**2);
                 const dP = e.mesh.position.distanceTo(player.position);
                 if (dCenter > areaRadius) e.hp -= currentDmg * delta;
@@ -265,8 +239,9 @@
                 let targetPos = null, isFleeing = false;
                 if (dCenter > areaRadius * 0.85) { targetPos = new THREE.Vector3(0, 0, 0); isFleeing = true; }
                 else {
-                    let targetObj = (e.hateTimer > 0 || dP < 40) ? player : null;
-                    if (!targetObj) enemies.forEach(o => { if (o !== e && o.alive && e.mesh.position.distanceTo(o.mesh.position) < 40) targetObj = o.mesh; });
+                    // 索敵範囲を大幅に縮小 (40 -> 18)
+                    let targetObj = (e.hateTimer > 0 || dP < 18) ? player : null;
+                    if (!targetObj) enemies.forEach(o => { if (o !== e && o.alive && e.mesh.position.distanceTo(o.mesh.position) < 18) targetObj = o.mesh; });
                     if (targetObj) targetPos = targetObj.position;
                 }
 
@@ -293,7 +268,6 @@
                 if (e.attackCooldown > 0) e.attackCooldown -= delta;
                 if (e.hateTimer > 0) e.hateTimer -= delta;
             });
-
             document.getElementById('survivors-count').innerText = aliveCount;
             document.getElementById('hp-fill').style.width = Math.max(0, playerHP) + "%";
             document.getElementById('sh-fill').style.width = Math.max(0, playerSH) + "%";
