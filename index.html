@@ -1,180 +1,46 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-    <meta charset="UTF-8">
-    <title>Tofu Survivor - The World Edition</title>
-    <style>
-        body { margin: 0; overflow: hidden; background: #000; font-family: 'MS Gothic', sans-serif; }
-        #start-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 10, 0.9); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; color: white; text-align: center; }
-        #start-btn { padding: 15px 50px; font-size: 24px; color: white; background: #ff0055; border: none; cursor: pointer; border-radius: 5px; font-weight: bold; }
-        #ui-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 20; display: none; }
-        #area-ui { position: absolute; top: 10px; right: 10px; color: #f0f; background: rgba(0,0,0,0.8); padding: 10px; border: 2px solid #f0f; border-radius: 5px; font-weight: bold; text-align: right; }
-        #status-ui { position: absolute; bottom: 20px; left: 20px; color: #fff; text-shadow: 2px 2px #000; }
-        .bar-container { width: 220px; height: 14px; background: #333; border: 2px solid #fff; margin-bottom: 8px; }
-        #hp-fill { width: 100%; height: 100%; background: #0f0; transition: width 0.1s; }
-        #at-label { color: #f00; font-size: 18px; font-weight: bold; }
-        #ts-label { color: #ff0; font-size: 18px; font-weight: bold; }
-        #time-stop-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; mix-blend-mode: difference; background: white; display: none; z-index: 50; }
-    </style>
-</head>
-<body>
+// --- シーン構築の最後の方（プレイヤー作成の前あたり）に追加 ---
+const areaGeometry = new THREE.RingGeometry(areaRadius, areaRadius + 2, 64);
+const areaMaterial = new THREE.MeshBasicMaterial({ color: 0xff00ff, side: THREE.DoubleSide });
+const areaCircle = new THREE.Mesh(areaGeometry, areaMaterial);
+areaCircle.rotation.x = -Math.PI / 2;
+areaCircle.position.y = 0.1; // 床より少し上に配置
+scene.add(areaCircle);
 
-    <div id="start-screen">
-        <h1 style="font-size: 48px; color: #ff0; margin: 0;">TOFU SURVIVOR</h1>
-        <p>移動: WASD / 視点回転: 矢印キー<br>攻撃: SPACE / 時停止: E</p>
-        <button id="start-btn">START GAME</button>
-    </div>
+// エリア外警告UIをHTMLに追加（body内のui-containerの中）
+// <div id="warning" style="position:absolute; top:30%; left:50%; transform:translateX(-50%); color:red; font-size:40px; display:none;">⚠️OUT OF AREA⚠️</div>
 
-    <div id="time-stop-overlay"></div>
-    <div id="ui-container">
-        <div id="area-ui">SURVIVORS: <span id="survivors-count">--</span><br>RADIUS: <span id="area-radius">--</span></div>
-        <div id="status-ui">
-            <div id="at-label">ATTACK: READY</div>
-            <div id="ts-label">TIME STOP: READY</div>
-            HP <div class="bar-container"><div id="hp-fill"></div></div>
-        </div>
-    </div>
+// --- ループ処理 (animate関数) 内の修正 ---
 
-    <script type="module">
-        import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.module.min.js';
+function animate() {
+    requestAnimationFrame(animate);
+    const delta = clock.getDelta();
+    if (!isGameStarted) { renderer.render(scene, camera); return; }
 
-        let isGameStarted = false;
-        const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x000011);
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        document.body.appendChild(renderer.domElement);
+    // エリアの半径を更新
+    if (!isTimeStopped) {
+        if (areaRadius > 5) areaRadius -= delta * 1.5;
+    }
 
-        scene.add(new THREE.AmbientLight(0xffffff, 0.8));
-        const sun = new THREE.DirectionalLight(0xffffff, 1.0);
-        sun.position.set(50, 100, 50);
-        scene.add(sun);
+    // エリア表示の更新
+    areaCircle.geometry.dispose(); // 古いメモリを解放
+    areaCircle.geometry = new THREE.RingGeometry(areaRadius, areaRadius + 1, 64);
 
-        const obstacles = [];
-        const floor = new THREE.Mesh(new THREE.PlaneGeometry(1000, 1000), new THREE.MeshPhongMaterial({ color: 0x111111 }));
-        floor.rotation.x = -Math.PI / 2;
-        scene.add(floor);
+    // エリア外ダメージ判定
+    const distFromCenter = player.position.length();
+    const warningUI = document.getElementById('warning');
+    if (distFromCenter > areaRadius) {
+        playerHP -= delta * 10; // エリア外は毎秒10ダメージ
+        if (warningUI) warningUI.style.display = 'block';
+    } else {
+        if (warningUI) warningUI.style.display = 'none';
+    }
 
-        for (let i = 0; i < 60; i++) {
-            const w = 15, h = 20 + Math.random() * 40, d = 15;
-            const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshPhongMaterial({ color: Math.random() * 0xffffff }));
-            const rx = (Math.random() - 0.5) * 400; const rz = (Math.random() - 0.5) * 400;
-            if (Math.abs(rx) < 30 && Math.abs(rz) < 30) continue;
-            mesh.position.set(rx, h/2, rz); scene.add(mesh);
-            obstacles.push({ minX: rx - w/2, maxX: rx + w/2, minZ: rz - d/2, maxZ: rz + d/2 });
-        }
+    // --- 以下、移動や攻撃のロジック ---
+    // (中略)
 
-        const player = new THREE.Group();
-        const pBody = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.5, 1.5), new THREE.MeshPhongMaterial({ color: 0xffffff }));
-        pBody.position.y = 0.75;
-        player.add(pBody); scene.add(player);
-        player.add(camera);
-        camera.position.set(0, 10, 15); camera.lookAt(0, 0, -5);
-
-        const stand = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.6, 1.6), new THREE.MeshPhongMaterial({ color: 0xff0000, emissive: 0x550000 }));
-        stand.visible = false; player.add(stand);
-
-        let playerHP = 100, isTimeStopped = false, timeStopCooldown = 0, attackCooldown = 0, areaRadius = 250;
-        const enemies = [], keys = {};
-
-        function spawnEnemy() {
-            const mesh = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.5, 1.5), new THREE.MeshPhongMaterial({ color: 0xffff00 }));
-            mesh.position.set((Math.random()-0.5)*350, 0.75, (Math.random()-0.5)*350);
-            scene.add(mesh); enemies.push({ mesh, alive: true, hp: 100 });
-        }
-        for(let i=0; i<30; i++) spawnEnemy();
-
-        window.addEventListener('keydown', (e) => {
-            keys[e.code] = true;
-            if (e.code === 'KeyE' && timeStopCooldown <= 0 && !isTimeStopped && isGameStarted) {
-                isTimeStopped = true;
-                document.getElementById('time-stop-overlay').style.display = 'block';
-                setTimeout(() => { 
-                    isTimeStopped = false; timeStopCooldown = 15;
-                    document.getElementById('time-stop-overlay').style.display = 'none';
-                }, 5000);
-            }
-        });
-        window.addEventListener('keyup', (e) => keys[e.code] = false);
-
-        function performAttack() {
-            if (attackCooldown > 0) return;
-            attackCooldown = 1.0; stand.visible = true;
-            let hits = 0;
-            const rush = setInterval(() => {
-                stand.position.set((Math.random()-0.5)*3, 0.75 + (Math.random()-0.5)*2, -4 - Math.random()*2);
-                enemies.forEach(e => {
-                    if (e.alive && e.mesh.position.distanceTo(player.position.clone().add(stand.position.clone().applyQuaternion(player.quaternion))) < 5) {
-                        e.hp -= 5;
-                    }
-                });
-                hits++; if(hits > 15) { clearInterval(rush); stand.visible = false; }
-            }, 30);
-        }
-
-        document.getElementById('start-btn').onclick = () => {
-            document.getElementById('start-screen').style.display = 'none';
-            document.getElementById('ui-container').style.display = 'block';
-            isGameStarted = true;
-        };
-
-        const clock = new THREE.Clock();
-        function animate() {
-            requestAnimationFrame(animate);
-            const delta = clock.getDelta();
-            if (!isGameStarted) { renderer.render(scene, camera); return; }
-
-            // クールダウン管理
-            if (timeStopCooldown > 0 && !isTimeStopped) timeStopCooldown -= delta;
-            if (attackCooldown > 0) attackCooldown -= delta;
-
-            // 移動計算 (時停止中は1.2倍)
-            const speedMult = isTimeStopped ? 1.2 : 1.0;
-            const moveSpeed = 20 * delta * speedMult;
-            const rotSpeed = 3 * delta;
-
-            if (keys['ArrowLeft']) player.rotation.y += rotSpeed;
-            if (keys['ArrowRight']) player.rotation.y -= rotSpeed;
-            
-            const dirX = (keys['KeyD']?1:0) - (keys['KeyA']?1:0);
-            const dirZ = (keys['KeyS']?1:0) - (keys['KeyW']?1:0);
-            if (dirX !== 0 || dirZ !== 0) {
-                const moveVec = new THREE.Vector3(dirX, 0, dirZ).normalize().multiplyScalar(moveSpeed).applyQuaternion(player.quaternion);
-                const nextX = player.position.x + moveVec.x;
-                const nextZ = player.position.z + moveVec.z;
-                let collision = false;
-                for (let b of obstacles) {
-                    if (nextX > b.minX-1 && nextX < b.maxX+1 && nextZ > b.minZ-1 && nextZ < b.maxZ+1) collision = true;
-                }
-                if (!collision) { player.position.x = nextX; player.position.z = nextZ; }
-            }
-
-            if (keys['Space']) performAttack();
-
-            if (!isTimeStopped) {
-                if (areaRadius > 15) areaRadius -= delta * 1.5;
-                enemies.forEach(e => {
-                    if (!e.alive) return;
-                    const d = player.position.distanceTo(e.mesh.position);
-                    if (d > 2) {
-                        const v = player.position.clone().sub(e.mesh.position).normalize().multiplyScalar(8 * delta);
-                        e.mesh.position.add(v);
-                    }
-                    if (e.hp <= 0) { e.alive = false; e.mesh.visible = false; }
-                });
-            }
-
-            // UI反映
-            document.getElementById('ts-label').innerText = timeStopCooldown > 0 ? `TIME STOP CD: ${Math.ceil(timeStopCooldown)}` : "TIME STOP: READY (E)";
-            document.getElementById('at-label').innerText = attackCooldown > 0 ? `ATTACK CD: ${attackCooldown.toFixed(1)}` : "ATTACK: READY (SPACE)";
-            document.getElementById('hp-fill').style.width = playerHP + "%";
-            document.getElementById('area-radius').innerText = Math.floor(areaRadius);
-            document.getElementById('survivors-count').innerText = enemies.filter(e => e.alive).length + 1;
-
-            renderer.render(scene, camera);
-        }
-        animate();
-    </script>
-</body>
-</html>
+    // ゲームオーバー判定
+    if (playerHP <= 0) {
+        alert("GAME OVER\nエリア内で生き残れ！");
+        location.reload();
+    }
+}
