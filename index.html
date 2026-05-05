@@ -2,10 +2,12 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Jojo Tofu Survivor - Collision Edition</title>
+    <title>Jojo Tofu Survivor - Enemy Edition</title>
     <style>
         body { margin: 0; overflow: hidden; background: #87CEEB; font-family: 'MS Gothic', sans-serif; }
         #ui { position: absolute; bottom: 20px; left: 20px; color: #fff; text-shadow: 2px 2px #000; font-size: 28px; font-weight: bold; pointer-events: none; }
+        #hp-bar { width: 200px; height: 20px; background: #333; border: 2px solid #fff; margin-top: 10px; }
+        #hp-fill { width: 100%; height: 100%; background: #0f0; transition: width 0.2s; }
         #instructions { position: absolute; top: 10px; left: 10px; color: #000; background: rgba(255,255,255,0.8); padding: 15px; border: 2px solid #333; border-radius: 10px; pointer-events: none; }
     </style>
 </head>
@@ -13,97 +15,89 @@
 
     <div id="instructions">
         WASD：移動 / 矢印キー：視点操作<br>
-        <b>スペースキー：スタンドラッシュ</b>
+        <b>スペースキー：赤豆腐で敵を攻撃！</b>
     </div>
-    <div id="ui">BRIGHT DISTRICT</div>
+    <div id="ui">
+        PLAYER HP
+        <div id="hp-bar"><div id="hp-fill"></div></div>
+    </div>
 
     <script type="module">
         import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.module.min.js';
 
         // --- 基本設定 ---
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x87CEEB); // 爽やかな青空
-        
+        scene.background = new THREE.Color(0x87CEEB);
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
 
-        // --- ライティング（大幅に明るく） ---
-        const ambientLight = new THREE.AmbientLight(0xffffff, 1.2); // 環境光を強く
+        const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
         scene.add(ambientLight);
-        const sunLight = new THREE.DirectionalLight(0xffffff, 1.5); // 太陽光
+        const sunLight = new THREE.DirectionalLight(0xffffff, 1.5);
         sunLight.position.set(50, 100, 50);
         scene.add(sunLight);
 
-        // --- ステージ生成と当たり判定データ ---
-        const obstacles = []; // 当たり判定用の配列
+        // --- マップと衝突判定 ---
+        const obstacles = [];
         const floor = new THREE.Mesh(new THREE.PlaneGeometry(300, 300), new THREE.MeshPhongMaterial({ color: 0x999999 }));
         floor.rotation.x = -Math.PI / 2;
         scene.add(floor);
 
         function createBuilding(x, z, w, h, d, color) {
-            const geo = new THREE.BoxGeometry(w, h, d);
-            const mat = new THREE.MeshPhongMaterial({ color: color });
-            const mesh = new THREE.Mesh(geo, mat);
+            const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshPhongMaterial({ color: color }));
             mesh.position.set(x, h / 2, z);
             scene.add(mesh);
-
-            // 当たり判定用のデータを保存（AABB方式）
-            obstacles.push({
-                minX: x - w/2, maxX: x + w/2,
-                minZ: z - d/2, maxZ: z + d/2
-            });
+            obstacles.push({ minX: x - w/2, maxX: x + w/2, minZ: z - d/2, maxZ: z + d/2 });
         }
 
-        // マップ生成
-        const colors = [0xdd5555, 0x55dd55, 0x5555dd, 0xeeee55];
-        for (let i = 0; i < 50; i++) {
+        for (let i = 0; i < 40; i++) {
             const x = Math.random() * 200 - 100;
             const z = Math.random() * 200 - 100;
-            if (Math.abs(x) < 15 && Math.abs(z) < 15) continue;
-
-            const w = Math.random() * 6 + 4;
-            const h = Math.random() * 20 + 5;
-            const d = Math.random() * 6 + 4;
-            createBuilding(x, z, w, h, d, colors[i % colors.length]);
+            if (Math.abs(x) < 20 && Math.abs(z) < 20) continue;
+            createBuilding(x, z, Math.random()*6+4, Math.random()*15+5, Math.random()*6+4, 0x777777);
         }
 
-        // 外周の壁
-        createBuilding(0, 150, 300, 20, 5, 0x333333);
-        createBuilding(0, -150, 300, 20, 5, 0x333333);
-        createBuilding(150, 0, 5, 20, 300, 0x333333);
-        createBuilding(-150, 0, 5, 20, 300, 0x333333);
-
-        // --- プレイヤー ---
-        const playerGroup = new THREE.Group();
-        scene.add(playerGroup);
+        // --- プレイヤー設定 ---
+        const player = new THREE.Group();
+        scene.add(player);
         const playerBody = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshPhongMaterial({ color: 0xffffff }));
         playerBody.position.y = 0.5;
-        playerGroup.add(playerBody);
-
-        const cameraOffset = new THREE.Vector3(0, 3, 6); 
-        playerGroup.add(camera);
-        camera.position.copy(cameraOffset);
-        camera.lookAt(new THREE.Vector3(0, 1, -5));
+        player.add(playerBody);
+        player.add(camera);
+        camera.position.set(0, 3, 6);
+        camera.lookAt(0, 1, -5);
 
         const stand = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), new THREE.MeshPhongMaterial({ color: 0xff0000 }));
         stand.position.set(0, 0.6, -2.5);
         stand.visible = false;
-        playerGroup.add(stand);
+        player.add(stand);
 
-        // --- 入力と衝突判定ロジック ---
+        let playerHP = 100;
+
+        // --- 敵（エネミー）設定 ---
+        const enemies = [];
+        function spawnEnemy(x, z) {
+            const enemyBody = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), new THREE.MeshPhongMaterial({ color: 0xffff00 }));
+            enemyBody.position.set(x, 0.6, z);
+            scene.add(enemyBody);
+            enemies.push({ mesh: enemyBody, alive: true });
+        }
+
+        // 初期の敵を配置
+        spawnEnemy(20, 20);
+        spawnEnemy(-30, 40);
+        spawnEnemy(50, -50);
+
+        // --- 入力判定 ---
         const keys = {};
         document.addEventListener('keydown', (e) => keys[e.code] = true);
         document.addEventListener('keyup', (e) => keys[e.code] = false);
 
         function checkCollision(newX, newZ) {
-            const pSize = 0.5; // プレイヤーの半径
             for (let obs of obstacles) {
-                if (newX + pSize > obs.minX && newX - pSize < obs.maxX &&
-                    newZ + pSize > obs.minZ && newZ - pSize < obs.maxZ) {
-                    return true; // 衝突！
-                }
+                if (newX + 0.6 > obs.minX && newX - 0.6 < obs.maxX && newZ + 0.6 > obs.minZ && newZ - 0.6 < obs.maxZ) return true;
             }
             return false;
         }
@@ -113,62 +107,83 @@
             if(isAttacking) return;
             isAttacking = true;
             stand.visible = true;
-            const rushEffect = setInterval(() => {
-                stand.position.x = (Math.random() - 0.5) * 0.8;
-                stand.position.y = 0.6 + (Math.random() - 0.5) * 0.5;
-            }, 30);
+            
+            // 当たり判定チェック（攻撃の瞬間）
             setTimeout(() => {
-                clearInterval(rushEffect);
-                stand.visible = false;
-                stand.position.set(0, 0.6, -2.5);
-                isAttacking = false;
-            }, 350);
+                const standWorldPos = new THREE.Vector3();
+                stand.getWorldPosition(standWorldPos);
+                
+                enemies.forEach(enemy => {
+                    if(!enemy.alive) return;
+                    const dist = standWorldPos.distanceTo(enemy.mesh.position);
+                    if(dist < 2.0) { // 攻撃ヒット！
+                        enemy.alive = false;
+                        enemy.mesh.visible = false;
+                        scene.remove(enemy.mesh);
+                    }
+                });
+            }, 100);
+
+            setTimeout(() => { stand.visible = false; isAttacking = false; }, 300);
         }
 
-        // --- ループ ---
+        // --- メインループ ---
         const clock = new THREE.Clock();
 
         function animate() {
             requestAnimationFrame(animate);
             const delta = clock.getDelta();
 
-            if (keys['ArrowLeft']) playerGroup.rotation.y += 2.5 * delta;
-            if (keys['ArrowRight']) playerGroup.rotation.y -= 2.5 * delta;
-
+            // 1. プレイヤー移動
+            if (keys['ArrowLeft']) player.rotation.y += 2.5 * delta;
+            if (keys['ArrowRight']) player.rotation.y -= 2.5 * delta;
             const moveSpeed = 15 * delta;
-            // 次の移動予定位置を計算
-            let nextX = playerGroup.position.x;
-            let nextZ = playerGroup.position.z;
-
-            // 簡易的な移動ベクトル計算
+            let nextX = player.position.x;
+            let nextZ = player.position.z;
             const dirZ = (keys['KeyW'] ? -1 : 0) + (keys['KeyS'] ? 1 : 0);
             const dirX = (keys['KeyA'] ? -1 : 0) + (keys['KeyD'] ? 1 : 0);
-
             if (dirZ !== 0 || dirX !== 0) {
-                // 向いている方向に基づいて移動量を算出
-                const angle = playerGroup.rotation.y;
-                const localZ = dirZ * moveSpeed;
-                const localX = dirX * moveSpeed;
-                
-                nextX += Math.sin(angle) * localZ + Math.cos(angle) * localX;
-                nextZ += Math.cos(angle) * localZ - Math.sin(angle) * localX;
+                const angle = player.rotation.y;
+                nextX += Math.sin(angle) * dirZ * moveSpeed + Math.cos(angle) * dirX * moveSpeed;
+                nextZ += Math.cos(angle) * dirZ * moveSpeed - Math.sin(angle) * dirX * moveSpeed;
+                if (!checkCollision(nextX, player.position.z)) player.position.x = nextX;
+                if (!checkCollision(player.position.x, nextZ)) player.position.z = nextZ;
+            }
+            if (keys['Space']) attack();
 
-                // 衝突判定：移動先が壁でなければ移動を許可
-                if (!checkCollision(nextX, playerGroup.position.z)) playerGroup.position.x = nextX;
-                if (!checkCollision(playerGroup.position.x, nextZ)) playerGroup.position.z = nextZ;
+            // 2. 敵のAI（追跡）
+            enemies.forEach(enemy => {
+                if(!enemy.alive) return;
+                
+                // プレイヤーへの方向を計算
+                const angleToPlayer = Math.atan2(player.position.x - enemy.mesh.position.x, player.position.z - enemy.mesh.position.z);
+                const enemySpeed = 6 * delta;
+                
+                let ex = enemy.mesh.position.x + Math.sin(angleToPlayer) * enemySpeed;
+                let ez = enemy.mesh.position.z + Math.cos(angleToPlayer) * enemySpeed;
+                
+                // 敵もビルにぶつからないようにする
+                if (!checkCollision(ex, enemy.mesh.position.z)) enemy.mesh.position.x = ex;
+                if (!checkCollision(enemy.mesh.position.x, ez)) enemy.mesh.position.z = ez;
+
+                // 3. ダメージ判定
+                const distToPlayer = enemy.mesh.position.distanceTo(player.position);
+                if(distToPlayer < 1.5) {
+                    playerHP -= 0.5; // 接触ダメージ
+                    document.getElementById('hp-fill').style.width = playerHP + "%";
+                }
+            });
+
+            if(playerHP <= 0) {
+                alert("再起不能(リタイア)！ ページを更新して再挑戦");
+                playerHP = 100;
+                location.reload();
             }
 
-            if (keys['Space']) attack();
             renderer.render(scene, camera);
         }
 
         animate();
-
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
     </script>
 </body>
 </html>
