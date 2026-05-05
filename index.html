@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Jojo Tofu Survivor - Colorful City</title>
+    <title>Jojo Tofu Survivor - Items & Range Update</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: 'MS Gothic', sans-serif; }
         #ui-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 20; }
@@ -33,7 +33,7 @@
         import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.module.min.js';
 
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x000022); // 夜の雰囲気
+        scene.background = new THREE.Color(0x000022);
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
@@ -50,7 +50,6 @@
         floor.rotation.x = -Math.PI / 2;
         scene.add(floor);
 
-        // カラフルなビルの配置
         const colors = [0xff5555, 0x55ff55, 0x5555ff, 0xffff55, 0xff55ff, 0x55ffff, 0xff9900];
         const gridSize = 35;
         for (let x = -210; x <= 210; x += gridSize) {
@@ -67,15 +66,8 @@
             }
         }
 
-        // 安全地帯の外側（紫の壁）
-        // 大きな円柱の内側をくり抜くのではなく、外側に巨大なチューブを置く
         const areaWallGeom = new THREE.CylinderGeometry(1, 1, 300, 64, 1, true);
-        const areaWallMat = new THREE.MeshBasicMaterial({ 
-            color: 0x8800ff, 
-            side: THREE.BackSide, 
-            transparent: true, 
-            opacity: 0.3 
-        });
+        const areaWallMat = new THREE.MeshBasicMaterial({ color: 0x8800ff, side: THREE.BackSide, transparent: true, opacity: 0.3 });
         const areaWall = new THREE.Mesh(areaWallGeom, areaWallMat);
         areaWall.position.y = 150;
         scene.add(areaWall);
@@ -96,6 +88,18 @@
         player.add(stand);
 
         let playerHP = 100, playerSH = 0, isTimeStopped = false, timeStopCooldown = 0;
+
+        // アイテム管理
+        const items = [];
+        function spawnItem(x, z) {
+            const isShield = Math.random() > 0.5;
+            const geom = new THREE.OctahedronGeometry(0.6);
+            const mat = new THREE.MeshPhongMaterial({ color: isShield ? 0x00ccff : 0x00ff00, emissive: isShield ? 0x004466 : 0x006600 });
+            const mesh = new THREE.Mesh(geom, mat);
+            mesh.position.set(x, 0.6, z);
+            scene.add(mesh);
+            items.push({ mesh, type: isShield ? 'SH' : 'HP' });
+        }
 
         const enemies = [];
         function spawnEnemy() {
@@ -121,10 +125,11 @@
                 isTimeStopped = true;
                 document.getElementById('time-stop-overlay').style.display = 'block';
                 setTimeout(() => { 
-                    isTimeStopped = false; 
-                    timeStopCooldown = 15; 
-                    document.getElementById('time-stop-overlay').style.display = 'none';
-                    enemies.forEach(e => { if(e.pendingDeath) { e.alive = false; scene.remove(e.mesh); scene.remove(e.stand); }});
+                    isTimeStopped = false; timeStopCooldown = 15; document.getElementById('time-stop-overlay').style.display = 'none';
+                    enemies.forEach(e => { if(e.pendingDeath) { 
+                        if(Math.random() < 0.3) spawnItem(e.mesh.position.x, e.mesh.position.z);
+                        e.alive = false; scene.remove(e.mesh); scene.remove(e.stand); 
+                    }});
                 }, 5000);
             }
         });
@@ -161,9 +166,7 @@
             if (!isTimeStopped) {
                 timeElapsed += delta;
                 if (areaRadius > 5) areaRadius -= delta * 1.8;
-                // 紫の壁のサイズを更新
                 areaWall.scale.set(areaRadius, 1, areaRadius);
-                
                 if (timeStopCooldown > 0) {
                     timeStopCooldown -= delta;
                     document.getElementById('timestop-label').innerText = `TS COOLDOWN: ${Math.ceil(timeStopCooldown)}s`;
@@ -195,11 +198,25 @@
             }
             if (keys['Space']) attack();
 
+            // アイテム回収判定
+            items.forEach((it, idx) => {
+                it.mesh.rotation.y += delta * 2;
+                if (it.mesh.position.distanceTo(player.position) < 2) {
+                    if (it.type === 'HP') playerHP = Math.min(100, playerHP + 30);
+                    else playerSH = Math.min(100, playerSH + 50);
+                    scene.remove(it.mesh);
+                    items.splice(idx, 1);
+                }
+            });
+
             let aliveCount = 1;
             enemies.forEach(e => {
                 if(!e.alive) return;
                 if(!e.pendingDeath) aliveCount++;
-                if (!isTimeStopped && e.hp <= 0) { e.alive = false; scene.remove(e.mesh); scene.remove(e.stand); return; }
+                if (!isTimeStopped && e.hp <= 0) { 
+                    if(Math.random() < 0.3) spawnItem(e.mesh.position.x, e.mesh.position.z);
+                    e.alive = false; scene.remove(e.mesh); scene.remove(e.stand); return; 
+                }
                 if (isTimeStopped) {
                     if (e.pendingDeath) e.mesh.children[0].material.color.set(0x444444);
                     return; 
@@ -217,7 +234,8 @@
                     e.mesh.lookAt(targetPos.x, 0, targetPos.z);
                     const tDist = e.mesh.position.distanceTo(targetPos);
                     
-                    if (tDist > 3.5) {
+                    // 敵の射程距離を延長 (3.5 -> 6.0)
+                    if (tDist > 6.0) {
                         const moveAngle = e.mesh.rotation.y;
                         let sX = Math.sin(moveAngle) * 9 * delta, sZ = Math.cos(moveAngle) * 9 * delta;
                         if (checkCollision(e.mesh.position.x + sX, e.mesh.position.z + sZ)) {
@@ -236,7 +254,8 @@
                         const eRush = setInterval(() => {
                             if (!e.alive || isTimeStopped || count > 12) { clearInterval(eRush); e.stand.visible = false; return; }
                             const dir = new THREE.Vector3().subVectors(target.position, e.mesh.position).normalize();
-                            e.stand.position.copy(e.mesh.position).add(dir.multiplyScalar(1.8 + Math.random()));
+                            // 攻撃のリーチも合わせて延長
+                            e.stand.position.copy(e.mesh.position).add(dir.multiplyScalar(tDist * 0.8 + Math.random()));
                             e.stand.position.y = 1.0 + (Math.random()-0.5);
                             e.stand.lookAt(target.position);
                             count++;
