@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Jojo Tofu Survivor - Smart AI Edition</title>
+    <title>Jojo Tofu Survivor - Fixed AI Edition</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: 'MS Gothic', sans-serif; }
         #ui-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 20; }
@@ -140,7 +140,17 @@
             scene.add(eStand);
             group.position.set(Math.cos(angle)*dist, 0, Math.sin(angle)*dist);
             scene.add(group);
-            enemies.push({ mesh: group, stand: eStand, alive: true, hp: 120, attackCooldown: 0, hateTimer: 0, pendingDeath: false });
+            // AI用パラメータを追加
+            enemies.push({ 
+                mesh: group, 
+                stand: eStand, 
+                alive: true, 
+                hp: 120, 
+                attackCooldown: 0, 
+                hateTimer: 0, 
+                pendingDeath: false,
+                offset: new THREE.Vector3((Math.random()-0.5)*4, 0, (Math.random()-0.5)*4) // 包囲用のズレ
+            });
         }
         for(let i=40; i>0; i--) spawnEnemy();
 
@@ -191,7 +201,7 @@
                 if (areaRadius > 8) areaRadius -= delta * 1.5;
                 areaWall.scale.set(areaRadius, 1, areaRadius);
                 
-                if (itemSpawnTimer > 6) { // 6秒ごとにアイテム補充
+                if (itemSpawnTimer > 6) {
                     itemSpawnTimer = 0;
                     const ang = Math.random() * Math.PI * 2;
                     const r = Math.random() * areaRadius;
@@ -246,7 +256,6 @@
             }
             if (keys['Space']) attack();
 
-            // アイテム取得判定
             items.forEach((it, idx) => {
                 it.mesh.rotation.y += delta * 3;
                 if (it.mesh.position.distanceTo(player.position) < 2.5) {
@@ -258,7 +267,6 @@
                 }
             });
 
-            // 敵のAIロジック
             let aliveCount = 1;
             enemies.forEach(e => {
                 if(!e.alive) return;
@@ -278,44 +286,53 @@
                 const dP = e.mesh.position.distanceTo(player.position);
                 if (dCenter > areaRadius) e.hp -= currentAreaDmg * delta;
 
+                // --- AI改善ロジック ---
                 let targetPos = new THREE.Vector3(0,0,0);
                 let currentSpeed = 11 * delta;
-                let isFleeing = false;
 
-                // AI思考の優先順位
-                // 1. 体力が低い場合は回復アイテムを探す
-                let nearestItem = null;
-                if (e.hp < 50) {
-                    let minDist = 40;
-                    items.forEach(it => {
-                        if (it.type === 'HP') {
-                            const d = e.mesh.position.distanceTo(it.mesh.position);
-                            if (d < minDist) { nearestItem = it.mesh.position; minDist = d; }
-                        }
-                    });
-                }
-
-                if (nearestItem) {
-                    targetPos = nearestItem;
-                    currentSpeed = 13 * delta;
-                } 
-                // 2. エリア外にいる場合は中央へ急ぐ
-                else if (dCenter > areaRadius * 0.9) {
+                // 1. エリア外にいる場合は最優先で中央へ
+                if (dCenter > areaRadius * 0.9) {
                     targetPos.set(0, 0, 0);
-                    currentSpeed = 14 * delta;
-                    isFleeing = true;
+                    currentSpeed = 15 * delta;
                 } 
-                // 3. プレイヤーが視界内にいるか、攻撃されたら「偏差追撃」
-                else if (e.hateTimer > 0 || dP < 45) {
-                    // プレイヤーの入力を読み取って移動先を予測
+                // 2. プレイヤーが近くにいる(30m)か、攻撃されたら確実に追尾
+                else if (e.hateTimer > 0 || dP < 30) {
+                    // 偏差予測: プレイヤーが移動キーを押している場合のみ予測をかける
                     const pDirX = (keys['KeyD']?1:0)-(keys['KeyA']?1:0);
                     const pDirZ = (keys['KeyS']?1:0)-(keys['KeyW']?1:0);
-                    const pMove = new THREE.Vector3(pDirX, 0, pDirZ).normalize().applyAxisAngle(new THREE.Vector3(0,1,0), player.rotation.y);
-                    targetPos.copy(player.position).add(pMove.multiplyScalar(6)); 
+                    
+                    targetPos.copy(player.position).add(e.offset); // 少しズレた位置（包囲）
+                    
+                    if (pDirX !== 0 || pDirZ !== 0) {
+                        const pMove = new THREE.Vector3(pDirX, 0, pDirZ).normalize().applyAxisAngle(new THREE.Vector3(0,1,0), player.rotation.y);
+                        targetPos.add(pMove.multiplyScalar(5)); // 移動先予測
+                    }
                     currentSpeed = 11.5 * delta;
                 }
+                // 3. 瀕死かつ近く(15m以内)にアイテムがある場合のみアイテムを拾う
+                else {
+                    let nearestItem = null;
+                    if (e.hp < 40) {
+                        let minDist = 15; // アイテムへの反応距離を制限
+                        items.forEach(it => {
+                            if (it.type === 'HP') {
+                                const d = e.mesh.position.distanceTo(it.mesh.position);
+                                if (d < minDist) { nearestItem = it.mesh.position; minDist = d; }
+                            }
+                        });
+                    }
 
-                // 移動の実行
+                    if (nearestItem) {
+                        targetPos = nearestItem;
+                        currentSpeed = 13 * delta;
+                    } else {
+                        // 何もなければ中央付近をぶらつく
+                        targetPos.set(0, 0, 0).add(e.offset.clone().multiplyScalar(2));
+                        currentSpeed = 8 * delta;
+                    }
+                }
+
+                // 移動実行
                 e.mesh.lookAt(targetPos.x, 0, targetPos.z);
                 const moveAngle = e.mesh.rotation.y;
                 let sX = Math.sin(moveAngle) * currentSpeed;
@@ -325,7 +342,7 @@
                     e.mesh.position.z += sZ;
                 }
 
-                // 敵のアイテム取得判定
+                // アイテム取得
                 items.forEach((it, idx) => {
                     if (e.mesh.position.distanceTo(it.mesh.position) < 2.0) {
                         if (it.type === 'HP') e.hp = Math.min(120, e.hp + 40);
@@ -333,8 +350,8 @@
                     }
                 });
 
-                // 攻撃判定 (射程内ならラッシュ)
-                if (dP < 6.5 && e.attackCooldown <= 0 && !isFleeing) {
+                // 攻撃判定
+                if (dP < 6.5 && e.attackCooldown <= 0) {
                     e.attackCooldown = 1.4; e.stand.visible = true;
                     let count = 0;
                     const eRush = setInterval(() => {
