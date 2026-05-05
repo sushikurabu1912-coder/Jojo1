@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Jojo Tofu Survivor - Chaos Battle</title>
+    <title>Jojo Tofu Survivor - Animation Fixed</title>
     <style>
         body { margin: 0; overflow: hidden; background: #87CEEB; font-family: 'MS Gothic', sans-serif; }
         #ui { position: absolute; bottom: 20px; left: 20px; color: #fff; text-shadow: 2px 2px #000; font-size: 20px; font-weight: bold; pointer-events: none; }
@@ -11,7 +11,6 @@
         #sh-fill { width: 0%; height: 100%; background: #0cf; transition: width 0.1s; }
         #area-ui { position: absolute; top: 10px; right: 10px; color: #f0f; background: rgba(0,0,0,0.8); padding: 10px; border: 2px solid #f0f; border-radius: 5px; font-weight: bold; text-align: right; }
         #warning { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #ff0000; font-size: 40px; font-weight: bold; display: none; text-shadow: 3px 3px #000; }
-        #survivors { font-size: 24px; color: #fff; }
     </style>
 </head>
 <body>
@@ -92,6 +91,7 @@
             body.position.y = 0.6;
             mesh.add(body);
             
+            // 敵スタンド：本体の正面方向（Zマイナス）にセット
             const eStand = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshPhongMaterial({ color: 0xff4444, emissive: 0xaa0000 }));
             eStand.position.set(0, 0.6, -1.8); 
             eStand.visible = false;
@@ -120,7 +120,11 @@
             isAttacking = true;
             stand.visible = true;
             const rushInterval = setInterval(() => {
-                stand.position.set((Math.random()-0.5)*0.8, 0.6+(Math.random()-0.5)*0.6, -2.5+(Math.random()-0.5)*0.4);
+                // プレイヤーのラッシュ位置（Z-2.5付近）を基準にブルブルさせる
+                stand.position.x = (Math.random()-0.5)*0.8;
+                stand.position.y = 0.6+(Math.random()-0.5)*0.6;
+                stand.position.z = -2.5 + (Math.random()-0.5)*0.4;
+                
                 const standPos = new THREE.Vector3();
                 stand.getWorldPosition(standPos);
                 enemies.forEach(e => {
@@ -156,7 +160,6 @@
                 document.getElementById('warning').style.display = 'none';
             }
 
-            // プレイヤー操作
             if (keys['ArrowLeft']) player.rotation.y += 2.5 * delta;
             if (keys['ArrowRight']) player.rotation.y -= 2.5 * delta;
             const moveSpeed = 15 * delta, angle = player.rotation.y;
@@ -170,8 +173,7 @@
             }
             if (keys['Space']) attack();
 
-            // 敵AIロジック
-            let aliveCount = 1; // プレイヤー
+            let aliveCount = 1;
             enemies.forEach(e => {
                 if(!e.alive) return;
                 aliveCount++;
@@ -181,33 +183,22 @@
                 if (distToCenter > areaRadius) e.hp -= currentDmg * delta;
                 if (e.hp <= 0) { e.alive = false; scene.remove(e.mesh); return; }
 
-                // --- ターゲット選定 ---
                 let target = null;
                 let targetDist = Infinity;
 
-                // エリア外なら中心を目指すのが最優先
                 if (distToCenter > areaRadius - 5) {
                     const angleToCenter = Math.atan2(0 - e.mesh.position.x, 0 - e.mesh.position.z);
                     e.mesh.rotation.y = angleToCenter;
                     const eX = e.mesh.position.x + Math.sin(angleToCenter)*9*delta;
                     const eZ = e.mesh.position.z + Math.cos(angleToCenter)*9*delta;
                     if (!checkCollision(eX, e.mesh.position.z)) e.mesh.position.x = eX;
-                    if (!checkCollision(e.mesh.position.x, eZ)) e.mesh.position.z = eZ;
+                    if (!checkCollision(player.position.x, eZ)) e.mesh.position.z = eZ;
                 } else {
-                    // エリア内にいる場合：一番近い相手（プレイヤーか他の敵）を探す
-                    if (distToP < 30) { // プレイヤー索敵範囲内
-                        target = player;
-                        targetDist = distToP;
-                    }
-
-                    // 他の敵も索敵
+                    if (distToP < 30) { target = player; targetDist = distToP; }
                     enemies.forEach(other => {
                         if (other === e || !other.alive) return;
                         const d = e.mesh.position.distanceTo(other.mesh.position);
-                        if (d < 15 && d < targetDist) { // 敵同士はもっと近くないと反応しない
-                            target = other.mesh;
-                            targetDist = d;
-                        }
+                        if (d < 15 && d < targetDist) { target = other.mesh; targetDist = d; }
                     });
 
                     if (target) {
@@ -220,26 +211,26 @@
                             if (!checkCollision(eX, e.mesh.position.z)) e.mesh.position.x = eX;
                             if (!checkCollision(e.mesh.position.x, eZ)) e.mesh.position.z = eZ;
                         } else if (e.attackCooldown <= 0) {
-                            // 攻撃
                             e.stand.visible = true;
-                            const eRushTimer = setInterval(() => {
-                                e.stand.position.set((Math.random()-0.5)*0.6, 0.6+(Math.random()-0.5)*0.6, -1.8+(Math.random()-0.5)*0.5);
+                            
+                            // 【修正箇所】敵スタンドのアニメーション基準点を正面(-1.8)に固定してブルブルさせる
+                            const eRushInterval = setInterval(() => {
+                                if (!e.alive) { clearInterval(eRushInterval); return; }
+                                e.stand.position.x = (Math.random()-0.5)*0.6;
+                                e.stand.position.y = 0.6+(Math.random()-0.5)*0.6;
+                                e.stand.position.z = -1.8 + (Math.random()-0.5)*0.4; // プラスにならないよう修正
                             }, 30);
                             
-                            // ターゲットがプレイヤーならダメージ
                             if (target === player) {
                                 if (playerSH > 0) playerSH -= 2; else playerHP -= 2;
                             } else {
-                                // ターゲットが他の敵ならそいつにダメージ
-                                enemies.forEach(enemyRef => {
-                                    if(enemyRef.mesh === target) enemyRef.hp -= 5;
-                                });
+                                enemies.forEach(enemyRef => { if(enemyRef.mesh === target) enemyRef.hp -= 5; });
                             }
                             
                             setTimeout(() => { 
-                                clearInterval(eRushTimer);
+                                clearInterval(eRushInterval);
                                 e.stand.visible = false; 
-                                e.stand.position.set(0, 0.6, -1.8);
+                                e.stand.position.set(0, 0.6, -1.8); // 攻撃終了時に元の位置へ
                             }, 400);
                             e.attackCooldown = 1.2;
                         }
@@ -251,10 +242,8 @@
             document.getElementById('survivors-count').innerText = aliveCount;
             document.getElementById('hp-fill').style.width = playerHP + "%";
             document.getElementById('sh-fill').style.width = playerSH + "%";
-            
             if(playerHP <= 0) { alert("RETIRED!"); location.reload(); }
-            if(aliveCount === 1 && playerHP > 0) { alert("VICTORY! You are the Last Survivor!"); location.reload(); }
-            
+            if(aliveCount === 1 && playerHP > 0) { alert("VICTORY!"); location.reload(); }
             renderer.render(scene, camera);
         }
         animate();
