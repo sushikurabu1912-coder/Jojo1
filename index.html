@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Jojo Tofu Survivor - Area Survival</title>
+    <title>Jojo Tofu Survivor - Duel Edition</title>
     <style>
         body { margin: 0; overflow: hidden; background: #87CEEB; font-family: 'MS Gothic', sans-serif; }
         #ui { position: absolute; bottom: 20px; left: 20px; color: #fff; text-shadow: 2px 2px #000; font-size: 20px; font-weight: bold; pointer-events: none; }
@@ -15,7 +15,7 @@
 </head>
 <body>
 
-    <div id="warning">⚠️エリア外ダメージ上昇中⚠️</div>
+    <div id="warning">⚠️エリア外ダメージ⚠️</div>
     <div id="area-ui">AREA SHRINKING<br><span id="area-radius">RADIUS: 150</span><br><small id="damage-rate">DMG: x1.5</small></div>
     <div id="ui">
         SHIELD <div class="bar-container"><div id="sh-fill"></div></div>
@@ -59,7 +59,7 @@
         scene.add(areaCircle);
 
         let areaRadius = 150;
-        let baseAreaDamage = 8; // 1.5倍に強化された基本秒間ダメージ
+        let baseAreaDamage = 8;
         let timeElapsed = 0;
 
         const player = new THREE.Group();
@@ -78,6 +78,7 @@
 
         let playerHP = 100, playerSH = 0;
 
+        // --- 敵 (数量半分: 40体) ---
         const enemies = [];
         function spawnEnemy() {
             const x = Math.random()*280-140, z = Math.random()*280-140;
@@ -86,18 +87,21 @@
             const body = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), new THREE.MeshPhongMaterial({ color: 0xffff00 }));
             body.position.y = 0.6;
             mesh.add(body);
-            const eStand = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshPhongMaterial({ color: 0xff4444 }));
+            
+            // 敵のスタンド
+            const eStand = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshPhongMaterial({ color: 0xff4444, emissive: 0xaa0000 }));
             eStand.position.set(0, 0.6, -2.0);
             eStand.visible = false;
             mesh.add(eStand);
+            
             mesh.position.set(x, 0, z);
             scene.add(mesh);
             enemies.push({ mesh: mesh, stand: eStand, alive: true, hp: 75, attackCooldown: 0 });
         }
-        for(let i=0; i<80; i++) spawnEnemy();
+        for(let i=0; i<40; i++) spawnEnemy();
 
         const items = [];
-        for(let i=0; i<30; i++) {
+        for(let i=0; i<20; i++) {
             const type = i%2===0 ? 'heal' : 'shield';
             const col = (type === 'heal') ? 0x00ff00 : 0x00aaff;
             const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.6, 0.6), new THREE.MeshPhongMaterial({ color: col, emissive: col, emissiveIntensity: 0.5 }));
@@ -143,18 +147,13 @@
             const delta = clock.getDelta();
             timeElapsed += delta;
 
-            // 1. エリア管理
             if (areaRadius > 5) areaRadius -= delta * 1.5;
             areaCircle.geometry = new THREE.RingGeometry(areaRadius, 400, 64);
-            
-            // 時間経過でダメージ倍率アップ
-            const currentDamageScaling = 1.5 + (timeElapsed / 30); // 30秒ごとに+1倍
+            const currentDamageScaling = 1.5 + (timeElapsed / 30);
             const currentAreaDamage = baseAreaDamage * currentDamageScaling;
-
             document.getElementById('area-radius').innerText = "RADIUS: " + Math.floor(areaRadius);
             document.getElementById('damage-rate').innerText = "DMG: x" + currentDamageScaling.toFixed(1);
 
-            // プレイヤーのエリエ外判定
             const distP = Math.sqrt(player.position.x**2 + player.position.z**2);
             if (distP > areaRadius) {
                 playerHP -= currentAreaDamage * delta;
@@ -163,7 +162,6 @@
                 document.getElementById('warning').style.display = 'none';
             }
 
-            // 2. プレイヤー移動
             if (keys['ArrowLeft']) player.rotation.y += 2.5 * delta;
             if (keys['ArrowRight']) player.rotation.y -= 2.5 * delta;
             const moveSpeed = 15 * delta, angle = player.rotation.y;
@@ -177,45 +175,56 @@
             }
             if (keys['Space']) attack();
 
-            // 3. 敵AI（エリア逃避 & 攻撃）
+            // --- 敵AI更新 ---
             enemies.forEach(e => {
                 if(!e.alive) return;
                 const distToCenter = Math.sqrt(e.mesh.position.x**2 + e.mesh.position.z**2);
                 const distToP = e.mesh.position.distanceTo(player.position);
 
-                // 敵のエリア外ダメージ
                 if (distToCenter > areaRadius) e.hp -= currentAreaDamage * delta;
                 if (e.hp <= 0) { e.alive = false; scene.remove(e.mesh); return; }
 
-                // 敵の移動ロジック
-                let targetAngle;
-                if (distToCenter > areaRadius - 5) {
-                    // エリア外、または境界に近い場合は中心(0,0)を目指す
-                    targetAngle = Math.atan2(0 - e.mesh.position.x, 0 - e.mesh.position.z);
-                } else if (distToP < 45) {
-                    // エリア内でプレイヤーが近い場合はプレイヤーを追う
-                    targetAngle = Math.atan2(player.position.x - e.mesh.position.x, player.position.z - e.mesh.position.z);
-                }
+                // 常にプレイヤーを向く（首が回るような挙動）
+                const angleToP = Math.atan2(player.position.x - e.mesh.position.x, player.position.z - e.mesh.position.z);
+                e.mesh.rotation.y = angleToP;
 
-                if (targetAngle !== undefined) {
-                    e.mesh.rotation.y = targetAngle;
-                    if (distToP > 3.0 || distToCenter > areaRadius) {
-                        const eX = e.mesh.position.x + Math.sin(targetAngle)*9*delta; // 逃げる時は少し速い
-                        const eZ = e.mesh.position.z + Math.cos(targetAngle)*9*delta;
+                // 移動ロジック
+                if (distToCenter > areaRadius - 5) {
+                    // エリア外なら中心へ
+                    const moveAngle = Math.atan2(0 - e.mesh.position.x, 0 - e.mesh.position.z);
+                    const eX = e.mesh.position.x + Math.sin(moveAngle)*9*delta;
+                    const eZ = e.mesh.position.z + Math.cos(moveAngle)*9*delta;
+                    if (!checkCollision(eX, e.mesh.position.z)) e.mesh.position.x = eX;
+                    if (!checkCollision(e.mesh.position.x, eZ)) e.mesh.position.z = eZ;
+                } else if (distToP < 45) {
+                    // 近づく
+                    if (distToP > 3.5) {
+                        const eX = e.mesh.position.x + Math.sin(angleToP)*7.5*delta;
+                        const eZ = e.mesh.position.z + Math.cos(angleToP)*7.5*delta;
                         if (!checkCollision(eX, e.mesh.position.z)) e.mesh.position.x = eX;
                         if (!checkCollision(e.mesh.position.x, eZ)) e.mesh.position.z = eZ;
-                    } else if (distToP <= 3.5 && e.attackCooldown <= 0) {
-                        // 攻撃
+                    } 
+                    // 攻撃
+                    else if (e.attackCooldown <= 0) {
                         e.stand.visible = true;
+                        // 敵スタンドもブルブル震える演出
+                        const rushTimer = setInterval(() => {
+                            e.stand.position.set((Math.random()-0.5)*0.5, 0.6+(Math.random()-0.5)*0.5, -2.0+(Math.random()-0.5)*0.3);
+                        }, 30);
+                        
                         if (playerSH > 0) playerSH -= 1.5; else playerHP -= 1.5;
-                        setTimeout(() => { e.stand.visible = false; }, 200);
+                        
+                        setTimeout(() => { 
+                            clearInterval(rushTimer);
+                            e.stand.visible = false; 
+                            e.stand.position.set(0, 0.6, -2.0);
+                        }, 400);
                         e.attackCooldown = 1.2;
                     }
                 }
                 if (e.attackCooldown > 0) e.attackCooldown -= delta;
             });
 
-            // 4. アイテム
             items.forEach(it => {
                 if(it.alive && player.position.distanceTo(it.mesh.position) < 1.5) {
                     it.alive = false; scene.remove(it.mesh);
