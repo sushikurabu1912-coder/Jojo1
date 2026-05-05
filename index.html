@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Jojo Tofu Survivor - Duel Edition</title>
+    <title>Jojo Tofu Survivor - Fixed Attack</title>
     <style>
         body { margin: 0; overflow: hidden; background: #87CEEB; font-family: 'MS Gothic', sans-serif; }
         #ui { position: absolute; bottom: 20px; left: 20px; color: #fff; text-shadow: 2px 2px #000; font-size: 20px; font-weight: bold; pointer-events: none; }
@@ -72,13 +72,12 @@
         camera.lookAt(0, 1, -5);
 
         const stand = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), new THREE.MeshPhongMaterial({ color: 0xff0000, emissive: 0xff0000, emissiveIntensity: 0.5 }));
-        stand.position.set(0, 0.6, -2.5);
+        stand.position.set(0, 0.6, -2.5); // プレイヤーの正面方向(Zマイナス)
         stand.visible = false;
         player.add(stand);
 
         let playerHP = 100, playerSH = 0;
 
-        // --- 敵 (数量半分: 40体) ---
         const enemies = [];
         function spawnEnemy() {
             const x = Math.random()*280-140, z = Math.random()*280-140;
@@ -88,9 +87,9 @@
             body.position.y = 0.6;
             mesh.add(body);
             
-            // 敵のスタンド
+            // 敵スタンド：初期位置を本体の正面(Zマイナス)に配置
             const eStand = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshPhongMaterial({ color: 0xff4444, emissive: 0xaa0000 }));
-            eStand.position.set(0, 0.6, -2.0);
+            eStand.position.set(0, 0.6, -1.8); 
             eStand.visible = false;
             mesh.add(eStand);
             
@@ -137,6 +136,7 @@
             setTimeout(() => {
                 clearInterval(rushInterval);
                 stand.visible = false; isAttacking = false;
+                stand.position.set(0, 0.6, -2.5);
                 enemies.forEach(e => { if(e.alive && e.hp <= 0) { e.alive = false; scene.remove(e.mesh); } });
             }, 400);
         }
@@ -151,8 +151,6 @@
             areaCircle.geometry = new THREE.RingGeometry(areaRadius, 400, 64);
             const currentDamageScaling = 1.5 + (timeElapsed / 30);
             const currentAreaDamage = baseAreaDamage * currentDamageScaling;
-            document.getElementById('area-radius').innerText = "RADIUS: " + Math.floor(areaRadius);
-            document.getElementById('damage-rate').innerText = "DMG: x" + currentDamageScaling.toFixed(1);
 
             const distP = Math.sqrt(player.position.x**2 + player.position.z**2);
             if (distP > areaRadius) {
@@ -175,7 +173,6 @@
             }
             if (keys['Space']) attack();
 
-            // --- 敵AI更新 ---
             enemies.forEach(e => {
                 if(!e.alive) return;
                 const distToCenter = Math.sqrt(e.mesh.position.x**2 + e.mesh.position.z**2);
@@ -184,42 +181,39 @@
                 if (distToCenter > areaRadius) e.hp -= currentAreaDamage * delta;
                 if (e.hp <= 0) { e.alive = false; scene.remove(e.mesh); return; }
 
-                // 常にプレイヤーを向く（首が回るような挙動）
+                // プレイヤーの方向を向く
                 const angleToP = Math.atan2(player.position.x - e.mesh.position.x, player.position.z - e.mesh.position.z);
                 e.mesh.rotation.y = angleToP;
 
-                // 移動ロジック
                 if (distToCenter > areaRadius - 5) {
-                    // エリア外なら中心へ
                     const moveAngle = Math.atan2(0 - e.mesh.position.x, 0 - e.mesh.position.z);
                     const eX = e.mesh.position.x + Math.sin(moveAngle)*9*delta;
                     const eZ = e.mesh.position.z + Math.cos(moveAngle)*9*delta;
                     if (!checkCollision(eX, e.mesh.position.z)) e.mesh.position.x = eX;
                     if (!checkCollision(e.mesh.position.x, eZ)) e.mesh.position.z = eZ;
                 } else if (distToP < 45) {
-                    // 近づく
-                    if (distToP > 3.5) {
+                    if (distToP > 3.2) {
                         const eX = e.mesh.position.x + Math.sin(angleToP)*7.5*delta;
                         const eZ = e.mesh.position.z + Math.cos(angleToP)*7.5*delta;
                         if (!checkCollision(eX, e.mesh.position.z)) e.mesh.position.x = eX;
                         if (!checkCollision(e.mesh.position.x, eZ)) e.mesh.position.z = eZ;
                     } 
-                    // 攻撃
                     else if (e.attackCooldown <= 0) {
                         e.stand.visible = true;
-                        // 敵スタンドもブルブル震える演出
-                        const rushTimer = setInterval(() => {
-                            e.stand.position.set((Math.random()-0.5)*0.5, 0.6+(Math.random()-0.5)*0.5, -2.0+(Math.random()-0.5)*0.3);
+                        // 敵スタンド：プレイヤー側（正面）へブルブル攻撃
+                        const eRushTimer = setInterval(() => {
+                            // 正面座標(-1.8)を中心に振動
+                            e.stand.position.set((Math.random()-0.5)*0.6, 0.6+(Math.random()-0.5)*0.6, -1.8+(Math.random()-0.5)*0.5);
                         }, 30);
                         
                         if (playerSH > 0) playerSH -= 1.5; else playerHP -= 1.5;
                         
                         setTimeout(() => { 
-                            clearInterval(rushTimer);
+                            clearInterval(eRushTimer);
                             e.stand.visible = false; 
-                            e.stand.position.set(0, 0.6, -2.0);
+                            e.stand.position.set(0, 0.6, -1.8); // 位置リセット
                         }, 400);
-                        e.attackCooldown = 1.2;
+                        e.attackCooldown = 1.3;
                     }
                 }
                 if (e.attackCooldown > 0) e.attackCooldown -= delta;
