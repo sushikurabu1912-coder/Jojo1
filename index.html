@@ -2,22 +2,16 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Jojo Tofu Survivor - Final Fixed</title>
+    <title>Jojo Tofu Survivor - Final Ultimate Fix</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #111; font-family: 'MS Gothic', sans-serif; }
-        /* UI全体の再構築 */
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'MS Gothic', sans-serif; }
         #ui-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
-        
-        /* 右上のエリア情報 */
         #area-ui { position: absolute; top: 10px; right: 10px; color: #f0f; background: rgba(0,0,0,0.8); padding: 10px; border: 2px solid #f0f; border-radius: 5px; font-weight: bold; text-align: right; }
-        
-        /* 左下のステータス（HP/シールド/クールダウン） */
         #status-ui { position: absolute; bottom: 20px; left: 20px; color: #fff; text-shadow: 2px 2px #000; z-index: 100; }
         .bar-container { width: 220px; height: 14px; background: #333; border: 2px solid #fff; margin-bottom: 8px; }
         #hp-fill { width: 100%; height: 100%; background: #0f0; transition: width 0.1s; }
         #sh-fill { width: 0%; height: 100%; background: #0cf; transition: width 0.1s; }
         #timestop-label { color: #ff0; font-size: 20px; font-weight: bold; margin-bottom: 5px; }
-
         #warning { position: absolute; top: 30%; left: 50%; transform: translateX(-50%); color: #ff0000; font-size: 40px; font-weight: bold; display: none; text-shadow: 3px 3px #000; }
         #time-stop-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; mix-blend-mode: difference; background: white; display: none; z-index: 10; }
     </style>
@@ -27,12 +21,7 @@
     <div id="time-stop-overlay"></div>
     <div id="ui-container">
         <div id="warning">⚠️エリア外ダメージ⚠️</div>
-        
-        <div id="area-ui">
-            SURVIVORS: <span id="survivors-count">41</span><br>
-            RADIUS: <span id="area-radius">150</span>
-        </div>
-
+        <div id="area-ui">SURVIVORS: <span id="survivors-count">41</span><br>RADIUS: <span id="area-radius">150</span></div>
         <div id="status-ui">
             <div id="timestop-label">TIME STOP: READY (E)</div>
             SHIELD <div class="bar-container"><div id="sh-fill"></div></div>
@@ -57,36 +46,44 @@
         scene.add(sunLight);
 
         const obstacles = [];
-        const floor = new THREE.Mesh(new THREE.PlaneGeometry(500, 500), new THREE.MeshPhongMaterial({ color: 0x444444 }));
+        const floor = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), new THREE.MeshPhongMaterial({ color: 0x555555 }));
         floor.rotation.x = -Math.PI / 2;
         scene.add(floor);
 
-        function createBuilding(x, z, w, h, d) {
-            const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshPhongMaterial({ color: 0x222222 }));
-            mesh.position.set(x, h/2, z);
-            scene.add(mesh);
-            obstacles.push({ minX: x-w/2, maxX: x+w/2, minZ: z-d/2, maxZ: z+d/2 });
+        // ビルの均等配置（グリッドベースでランダムにずらす）
+        const gridSize = 30; // 30x30の間隔で配置
+        for (let x = -200; x <= 200; x += gridSize) {
+            for (let z = -200; z <= 200; z += gridSize) {
+                // 中央（0,0）付近には作らない（プレイヤー初期位置確保）
+                if (Math.abs(x) < 15 && Math.abs(z) < 15) continue;
+                
+                const offsetX = (Math.random() - 0.5) * 20;
+                const offsetZ = (Math.random() - 0.5) * 20;
+                const w = 10, h = Math.random() * 30 + 10, d = 10;
+                const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshPhongMaterial({ color: 0x333333 }));
+                mesh.position.set(x + offsetX, h / 2, z + offsetZ);
+                scene.add(mesh);
+                obstacles.push({ minX: mesh.position.x - w/2, maxX: mesh.position.x + w/2, minZ: mesh.position.z - d/2, maxZ: mesh.position.z + d/2 });
+            }
         }
-        for (let i = 0; i < 40; i++) createBuilding(Math.random()*300-150, Math.random()*300-150, 10, Math.random()*25+5, 10);
 
-        const areaCircle = new THREE.Mesh(new THREE.RingGeometry(1, 500, 64), new THREE.MeshBasicMaterial({ color: 0x8800ff, side: THREE.DoubleSide, transparent: true, opacity: 0.5 }));
+        const areaCircle = new THREE.Mesh(new THREE.RingGeometry(1, 600, 64), new THREE.MeshBasicMaterial({ color: 0x8800ff, side: THREE.DoubleSide, transparent: true, opacity: 0.5 }));
         areaCircle.rotation.x = -Math.PI / 2;
         areaCircle.position.y = 0.2;
         scene.add(areaCircle);
 
-        let areaRadius = 150, timeElapsed = 0;
+        let areaRadius = 180, timeElapsed = 0;
         const player = new THREE.Group();
         scene.add(player);
         const playerBody = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshPhongMaterial({ color: 0xffffff }));
         playerBody.position.y = 0.5;
         player.add(playerBody);
         player.add(camera);
-        camera.position.set(0, 4, 7);
+        camera.position.set(0, 5, 8);
         camera.lookAt(0, 1, -5);
 
-        // プレイヤーのスタンド
         const stand = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), new THREE.MeshPhongMaterial({ color: 0xff0000, emissive: 0xff0000 }));
-        stand.position.set(0, 0.6, -2);
+        stand.position.set(0, 0.6, -2.5);
         stand.visible = false;
         player.add(stand);
 
@@ -94,19 +91,20 @@
 
         const enemies = [];
         function spawnEnemy() {
-            const x = Math.random()*280-140, z = Math.random()*280-140;
-            if (Math.abs(x) < 20 && Math.abs(z) < 20) return;
+            const angle = Math.random() * Math.PI * 2;
+            const dist = 50 + Math.random() * 100;
+            const x = Math.cos(angle) * dist, z = Math.sin(angle) * dist;
+            
             const group = new THREE.Group();
             const body = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), new THREE.MeshPhongMaterial({ color: 0xffff00 }));
             body.position.y = 0.6;
             group.add(body);
             
-            // 重要：スタンドを本体(Group)の子要素として配置。
-            // 最初から Z=-1.5 (正面側) に置く
-            const eStand = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshPhongMaterial({ color: 0xff4444 }));
-            eStand.position.set(0, 0.6, -1.5);
+            // 新・攻撃方向システム：スタンドを本体の中に「直接」入れず、
+            // 攻撃時にターゲット方向へ向けてワールド空間で配置する
+            const eStand = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.1, 1.1), new THREE.MeshPhongMaterial({ color: 0xff4444 }));
             eStand.visible = false;
-            group.add(eStand);
+            scene.add(eStand); // 本体の子ではなく、シーンに直接追加
             
             group.position.set(x, 0, z);
             scene.add(group);
@@ -120,11 +118,7 @@
             if (e.code === 'KeyE' && timeStopCooldown <= 0 && !isTimeStopped) {
                 isTimeStopped = true;
                 document.getElementById('time-stop-overlay').style.display = 'block';
-                setTimeout(() => {
-                    isTimeStopped = false;
-                    timeStopCooldown = 15;
-                    document.getElementById('time-stop-overlay').style.display = 'none';
-                }, 5000);
+                setTimeout(() => { isTimeStopped = false; timeStopCooldown = 15; document.getElementById('time-stop-overlay').style.display = 'none'; }, 5000);
             }
         });
         document.addEventListener('keyup', (e) => keys[e.code] = false);
@@ -139,25 +133,22 @@
             if(isAttacking) return;
             isAttacking = true; stand.visible = true;
             const rush = setInterval(() => {
-                stand.position.set((Math.random()-0.5)*0.8, 0.6+(Math.random()-0.5)*0.6, -2.0 - (Math.random()*0.5));
+                stand.position.set((Math.random()-0.5)*1, 0.6+(Math.random()-0.5)*1, -2.5 - (Math.random()*1));
                 const standPos = new THREE.Vector3();
                 stand.getWorldPosition(standPos);
-                enemies.forEach(e => {
-                    if(e.alive && standPos.distanceTo(e.mesh.position) < 3.5) { e.hp -= 3; e.hateTimer = 10; }
-                });
+                enemies.forEach(e => { if(e.alive && standPos.distanceTo(e.mesh.position) < 4.0) { e.hp -= 3; e.hateTimer = 10; } });
             }, 30);
-            setTimeout(() => { clearInterval(rush); stand.visible = false; isAttacking = false; stand.position.set(0, 0.6, -2); }, 400);
+            setTimeout(() => { clearInterval(rush); stand.visible = false; isAttacking = false; stand.position.set(0, 0.6, -2.5); }, 400);
         }
 
         const clock = new THREE.Clock();
         function animate() {
             requestAnimationFrame(animate);
             const delta = clock.getDelta();
-            
             if (!isTimeStopped) {
                 timeElapsed += delta;
-                if (areaRadius > 5) areaRadius -= delta * 1.0;
-                areaCircle.geometry = new THREE.RingGeometry(areaRadius, 500, 64);
+                if (areaRadius > 5) areaRadius -= delta * 1.5;
+                areaCircle.geometry = new THREE.RingGeometry(areaRadius, 600, 64);
                 if (timeStopCooldown > 0) {
                     timeStopCooldown -= delta;
                     document.getElementById('timestop-label').innerText = `TS COOLDOWN: ${Math.ceil(timeStopCooldown)}s`;
@@ -173,14 +164,11 @@
             if (distP > areaRadius) {
                 playerHP -= currentDmg * delta;
                 document.getElementById('warning').style.display = 'block';
-            } else {
-                document.getElementById('warning').style.display = 'none';
-            }
+            } else { document.getElementById('warning').style.display = 'none'; }
 
-            // プレイヤー移動
-            if (keys['ArrowLeft']) player.rotation.y += 2.5 * delta;
-            if (keys['ArrowRight']) player.rotation.y -= 2.5 * delta;
-            const moveSpeed = 16 * delta, angle = player.rotation.y;
+            if (keys['ArrowLeft']) player.rotation.y += 3 * delta;
+            if (keys['ArrowRight']) player.rotation.y -= 3 * delta;
+            const moveSpeed = 18 * delta, angle = player.rotation.y;
             const dirZ = (keys['KeyW'] ? -1 : 0) + (keys['KeyS'] ? 1 : 0);
             const dirX = (keys['KeyA'] ? -1 : 0) + (keys['KeyD'] ? 1 : 0);
             if (dirZ !== 0 || dirX !== 0) {
@@ -195,8 +183,7 @@
             enemies.forEach(e => {
                 if(!e.alive) return;
                 aliveCount++;
-                if (e.hp <= 0) { e.alive = false; scene.remove(e.mesh); return; }
-
+                if (e.hp <= 0) { e.alive = false; scene.remove(e.mesh); scene.remove(e.stand); return; }
                 if (isTimeStopped) return;
 
                 const dCenter = Math.sqrt(e.mesh.position.x**2 + e.mesh.position.z**2);
@@ -204,60 +191,45 @@
                 if (dCenter > areaRadius) e.hp -= currentDmg * delta;
 
                 let target = (e.hateTimer > 0 || dP < 30) ? player : null;
-                if (!target) {
-                    enemies.forEach(o => { if (o !== e && o.alive && e.mesh.position.distanceTo(o.mesh.position) < 15) target = o.mesh; });
-                }
+                if (!target) enemies.forEach(o => { if (o !== e && o.alive && e.mesh.position.distanceTo(o.mesh.position) < 20) target = o.mesh; });
 
                 if (target) {
-                    // 正しい向きに回転
-                    const targetAngle = Math.atan2(target.position.x - e.mesh.position.x, target.position.z - e.mesh.position.z);
-                    e.mesh.rotation.y = targetAngle;
+                    const targetPos = target.position.clone();
+                    e.mesh.lookAt(targetPos.x, 0, targetPos.z);
+                    const tDist = e.mesh.position.distanceTo(targetPos);
                     
-                    const tDist = e.mesh.position.distanceTo(target.position);
-                    if (tDist > 3.0) {
-                        let sX = Math.sin(targetAngle) * 8 * delta, sZ = Math.cos(targetAngle) * 8 * delta;
-                        if (!checkCollision(e.mesh.position.x + sX, e.mesh.position.z + sZ)) {
-                            e.mesh.position.x += sX; e.mesh.position.z += sZ;
-                        }
+                    if (tDist > 3.5) {
+                        const sX = Math.sin(e.mesh.rotation.y) * 9 * delta, sZ = Math.cos(e.mesh.rotation.y) * 9 * delta;
+                        if (!checkCollision(e.mesh.position.x + sX, e.mesh.position.z + sZ)) { e.mesh.position.x += sX; e.mesh.position.z += sZ; }
                     } else if (e.attackCooldown <= 0) {
-                        // --- 敵のスタンドラッシュアニメーション ---
+                        e.attackCooldown = 1.6;
+                        // 攻撃演出：ターゲットに向かって物理的に移動させる
                         e.stand.visible = true;
+                        let count = 0;
                         const eRush = setInterval(() => {
-                            if (!e.alive || isTimeStopped) { clearInterval(eRush); return; }
-                            // 子要素のローカル座標で Z をマイナス方向にだけ振る（絶対正面）
-                            e.stand.position.set(
-                                (Math.random()-0.5)*0.6,
-                                0.6+(Math.random()-0.5)*0.6,
-                                -1.5 - (Math.random()*1.0) // 常に本体の前(Zマイナス)
-                            );
-                        }, 30);
+                            if (!e.alive || isTimeStopped || count > 12) { clearInterval(eRush); e.stand.visible = false; return; }
+                            // ターゲットの方向ベクトルを計算
+                            const dir = new THREE.Vector3().subVectors(target.position, e.mesh.position).normalize();
+                            // スタンドを敵本体の位置からターゲットの方向に突き出させる
+                            e.stand.position.copy(e.mesh.position).add(dir.multiplyScalar(1.5 + Math.random()));
+                            e.stand.position.y = 1.0 + (Math.random()-0.5);
+                            e.stand.lookAt(target.position);
+                            count++;
+                        }, 35);
                         
-                        if (target === player) {
-                            if (playerSH > 0) playerSH -= 4; else playerHP -= 4;
-                        } else {
-                            enemies.forEach(ref => { if(ref.mesh === target) ref.hp -= 10; });
-                        }
-                        
-                        setTimeout(() => { 
-                            clearInterval(eRush); 
-                            e.stand.visible = false; 
-                            e.stand.position.set(0, 0.6, -1.5); // 待機位置も正面に固定
-                        }, 400);
-                        e.attackCooldown = 1.5;
+                        if (target === player) { if (playerSH > 0) playerSH -= 4; else playerHP -= 4; }
+                        else { enemies.forEach(ref => { if(ref.mesh === target) ref.hp -= 10; }); }
                     }
                 }
                 if (e.attackCooldown > 0) e.attackCooldown -= delta;
                 if (e.hateTimer > 0) e.hateTimer -= delta;
             });
 
-            // UI更新
             document.getElementById('survivors-count').innerText = aliveCount;
             document.getElementById('hp-fill').style.width = playerHP + "%";
             document.getElementById('sh-fill').style.width = playerSH + "%";
-            
             if(playerHP <= 0) { alert("RETIRED!"); location.reload(); }
             if(aliveCount === 1 && playerHP > 0) { alert("VICTORY!"); location.reload(); }
-            
             renderer.render(scene, camera);
         }
         animate();
