@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Jojo Tofu Survivor - Stand Direction Fixed</title>
+    <title>Jojo Tofu Survivor - Hard Mode</title>
     <style>
         body { margin: 0; overflow: hidden; background: #87CEEB; font-family: 'MS Gothic', sans-serif; }
         #ui { position: absolute; bottom: 20px; left: 20px; color: #fff; text-shadow: 2px 2px #000; font-size: 20px; font-weight: bold; pointer-events: none; }
@@ -76,7 +76,6 @@
         camera.lookAt(0, 1, -5);
 
         const stand = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), new THREE.MeshPhongMaterial({ color: 0xff0000, emissive: 0xff0000, emissiveIntensity: 0.5 }));
-        // 最初から表示されないよう隠し、少し前に出す
         stand.position.set(0, 0.6, -2);
         stand.visible = false;
         player.add(stand);
@@ -93,7 +92,6 @@
             mesh.add(body);
             
             const eStand = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshPhongMaterial({ color: 0xff4444, emissive: 0xaa0000 }));
-            // 初期位置を本体の少し前方に設定
             eStand.position.set(0, 0.6, -1.5); 
             eStand.visible = false;
             mesh.add(eStand);
@@ -115,18 +113,13 @@
             return false;
         }
 
-        // プレイヤーの攻撃アニメーション
         let isAttacking = false;
         function attack() {
             if(isAttacking) return;
             isAttacking = true;
             stand.visible = true;
             const rushInterval = setInterval(() => {
-                // プレイヤーの正面(Z-)方向に震わせる
-                stand.position.x = (Math.random()-0.5)*0.8;
-                stand.position.y = 0.6+(Math.random()-0.5)*0.6;
-                stand.position.z = -2.0 + (Math.random()-0.5)*0.5;
-
+                stand.position.set((Math.random()-0.5)*0.8, 0.6+(Math.random()-0.5)*0.6, -2.0+(Math.random()-0.5)*0.5);
                 const standPos = new THREE.Vector3();
                 stand.getWorldPosition(standPos);
                 enemies.forEach(e => {
@@ -191,9 +184,7 @@
                 let targetDist = Infinity;
 
                 if (e.hateTimer > 0) {
-                    target = player;
-                    targetDist = distToP;
-                    e.hateTimer -= delta;
+                    target = player; targetDist = distToP; e.hateTimer -= delta;
                 } else {
                     if (distToP < 30) { target = player; targetDist = distToP; }
                     enemies.forEach(other => {
@@ -230,21 +221,17 @@
                         if (!checkCollision(e.mesh.position.x + stepX, e.mesh.position.z)) e.mesh.position.x += stepX;
                         if (!checkCollision(e.mesh.position.x, e.mesh.position.z + stepZ)) e.mesh.position.z += stepZ;
                     } else if (e.attackCooldown <= 0) {
-                        // --- 敵の攻撃アニメーション修正 ---
                         e.stand.visible = true;
                         const eRush = setInterval(() => {
                             if (!e.alive) { clearInterval(eRush); return; }
-                            // 敵本体の正面方向に座標をセット
-                            // Zマイナス方向に震わせることで、常に回転している本体の前へ出す
-                            e.stand.position.x = (Math.random()-0.5)*0.6;
-                            e.stand.position.y = 0.6+(Math.random()-0.5)*0.6;
-                            e.stand.position.z = -1.5 - (Math.random()*0.8); // 確実に前方に突き出す
+                            e.stand.position.set((Math.random()-0.5)*0.6, 0.6+(Math.random()-0.5)*0.6, -1.5 - (Math.random()*0.8));
                         }, 30);
                         
+                        // 【ダメージ2倍修正】
                         if (target === player) {
-                            if (playerSH > 0) playerSH -= 2; else playerHP -= 2;
+                            if (playerSH > 0) playerSH -= 4; else playerHP -= 4; // 2 -> 4
                         } else {
-                            enemies.forEach(ref => { if(ref.mesh === target) ref.hp -= 5; });
+                            enemies.forEach(ref => { if(ref.mesh === target) ref.hp -= 10; }); // 5 -> 10
                         }
                         
                         setTimeout(() => { 
