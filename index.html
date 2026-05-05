@@ -2,20 +2,20 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Jojo Tofu Survivor</title>
+    <title>Jojo Tofu Survivor - Map Edition</title>
     <style>
         body { margin: 0; overflow: hidden; background: #1a0022; font-family: 'MS Gothic', sans-serif; }
-        #ui { position: absolute; bottom: 20px; left: 20px; color: #ff00ff; text-shadow: 2px 2px #00ffff; font-size: 28px; font-weight: bold; }
-        #instructions { position: absolute; top: 10px; left: 10px; color: white; background: rgba(0,0,0,0.7); padding: 15px; border: 2px solid #ff00ff; border-radius: 10px; }
+        #ui { position: absolute; bottom: 20px; left: 20px; color: #ff00ff; text-shadow: 2px 2px #00ffff; font-size: 28px; font-weight: bold; pointer-events: none; }
+        #instructions { position: absolute; top: 10px; left: 10px; color: white; background: rgba(0,0,0,0.7); padding: 15px; border: 2px solid #ff00ff; border-radius: 10px; pointer-events: none; }
     </style>
 </head>
 <body>
 
     <div id="instructions">
         WASD：移動 / 矢印キー：視点操作<br>
-        <b>スペースキー：赤豆腐スタンド攻撃！</b>
+        <b>スペースキー：スタンドラッシュ</b>
     </div>
-    <div id="ui">TOFU SURVIVOR</div>
+    <div id="ui">TOFU DISTRICT</div>
 
     <script type="module">
         import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.module.min.js';
@@ -23,20 +23,58 @@
         // --- 基本設定 ---
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x1a0022); 
-        scene.fog = new THREE.FogExp2(0x1a0022, 0.02);
+        scene.fog = new THREE.FogExp2(0x1a0022, 0.015);
 
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
 
-        const light = new THREE.HemisphereLight(0xffffff, 0x444444, 2);
-        scene.add(light);
+        // 明るめの環境光とスポットライト
+        const ambientLight = new THREE.AmbientLight(0x404040, 2);
+        scene.add(ambientLight);
+        const sunLight = new THREE.DirectionalLight(0xffffff, 2);
+        sunLight.position.set(10, 20, 10);
+        scene.add(sunLight);
 
-        // --- ステージ ---
-        const floor = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshPhongMaterial({ color: 0x222222 }));
+        // --- ステージ生成 ---
+        const floorGeo = new THREE.PlaneGeometry(300, 300);
+        const floorMat = new THREE.MeshPhongMaterial({ color: 0x111111 });
+        const floor = new THREE.Mesh(floorGeo, floorMat);
         floor.rotation.x = -Math.PI / 2;
         scene.add(floor);
+
+        // 様々な大きさの立方体（ビル）を配置
+        function createBuilding(x, z, width, height, depth, color) {
+            const geo = new THREE.BoxGeometry(width, height, depth);
+            const mat = new THREE.MeshPhongMaterial({ color: color });
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.set(x, height / 2, z); // 地面に接するように配置
+            scene.add(mesh);
+        }
+
+        // マップの自動生成（ランダム配置）
+        const colors = [0x442266, 0x224466, 0x333333, 0x552244];
+        for (let i = 0; i < 60; i++) {
+            const x = Math.random() * 200 - 100;
+            const z = Math.random() * 200 - 100;
+            
+            // プレイヤーの初期地点(0,0)付近には置かない
+            if (Math.abs(x) < 10 && Math.abs(z) < 10) continue;
+
+            const w = Math.random() * 8 + 2;
+            const h = Math.random() * 25 + 2;
+            const d = Math.random() * 8 + 2;
+            const col = colors[Math.floor(Math.random() * colors.length)];
+            
+            createBuilding(x, z, w, h, d, col);
+        }
+
+        // 外周の壁
+        createBuilding(0, 150, 300, 40, 5, 0x110011);
+        createBuilding(0, -150, 300, 40, 5, 0x110011);
+        createBuilding(150, 0, 5, 40, 300, 0x110011);
+        createBuilding(-150, 0, 5, 40, 300, 0x110011);
 
         // --- プレイヤー（自分豆腐） ---
         const playerGroup = new THREE.Group();
@@ -44,78 +82,72 @@
 
         const playerBody = new THREE.Mesh(
             new THREE.BoxGeometry(1, 1, 1), 
-            new THREE.MeshPhongMaterial({ color: 0xffffff }) // 白豆腐
+            new THREE.MeshPhongMaterial({ color: 0xffffff })
         );
         playerBody.position.y = 0.5;
         playerGroup.add(playerBody);
 
-        // --- 3人称カメラの設定（プレイヤーの真後ろ・少し上） ---
-        const cameraOffset = new THREE.Vector3(0, 2.5, 5); 
+        // TPSカメラ
+        const cameraOffset = new THREE.Vector3(0, 3, 6); 
         playerGroup.add(camera);
         camera.position.copy(cameraOffset);
-        camera.lookAt(new THREE.Vector3(0, 1, -2)); // 少し前方を向く
+        camera.lookAt(new THREE.Vector3(0, 1, -5));
 
-        // --- スタンド（赤い豆腐） ---
+        // スタンド（赤い豆腐）
         const stand = new THREE.Mesh(
-            new THREE.BoxGeometry(1, 1, 1), 
-            new THREE.MeshPhongMaterial({ color: 0xff0000, transparent: true, opacity: 0.8 }) 
+            new THREE.BoxGeometry(1.2, 1.2, 1.2), 
+            new THREE.MeshPhongMaterial({ color: 0xff0000, emissive: 0x330000 }) 
         );
-        stand.position.set(0, 0.5, -2); // プレイヤーの2ユニット前方
+        stand.position.set(0, 0.6, -2.5);
         stand.visible = false;
         playerGroup.add(stand);
 
-        // --- 入力管理 ---
+        // --- 入力とアクション ---
         const keys = {};
         document.addEventListener('keydown', (e) => keys[e.code] = true);
         document.addEventListener('keyup', (e) => keys[e.code] = false);
 
-        // 攻撃アクション
         let isAttacking = false;
         function attack() {
             if(isAttacking) return;
             isAttacking = true;
             stand.visible = true;
 
-            // ラッシュ演出：小刻みに前後左右に震える
-            const startTime = Date.now();
             const rushEffect = setInterval(() => {
-                stand.position.x = (Math.random() - 0.5) * 0.5;
-                stand.position.z = -2 + (Math.random() - 0.5) * 0.5;
+                stand.position.x = (Math.random() - 0.5) * 0.8;
+                stand.position.y = 0.6 + (Math.random() - 0.5) * 0.5;
             }, 30);
 
             setTimeout(() => {
                 clearInterval(rushEffect);
                 stand.visible = false;
-                stand.position.set(0, 0.5, -2);
+                stand.position.set(0, 0.6, -2.5);
                 isAttacking = false;
-            }, 300); // 0.3秒間出現
+            }, 350);
         }
 
-        // --- メインループ ---
+        // --- ループ ---
         const clock = new THREE.Clock();
 
         function animate() {
             requestAnimationFrame(animate);
             const delta = clock.getDelta();
 
-            // 1. 視点・方向転換 (左右矢印)
             if (keys['ArrowLeft']) playerGroup.rotation.y += 2.5 * delta;
             if (keys['ArrowRight']) playerGroup.rotation.y -= 2.5 * delta;
 
-            // 2. 移動 (WASD) - 向いている方向に進む
-            const moveSpeed = 12 * delta;
+            const moveSpeed = 15 * delta;
             if (keys['KeyW']) playerGroup.translateZ(-moveSpeed);
             if (keys['KeyS']) playerGroup.translateZ(moveSpeed);
             if (keys['KeyA']) playerGroup.translateX(-moveSpeed);
             if (keys['KeyD']) playerGroup.translateX(moveSpeed);
 
-            // 3. 攻撃 (Space)
             if (keys['Space']) attack();
 
             renderer.render(scene, camera);
         }
 
-        animate();
+            animate();
 
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
