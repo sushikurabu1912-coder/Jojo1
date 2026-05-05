@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Jojo Tofu Survivor - Smart AI Edition</title>
+    <title>Jojo Tofu Survivor - Stand Direction Fixed</title>
     <style>
         body { margin: 0; overflow: hidden; background: #87CEEB; font-family: 'MS Gothic', sans-serif; }
         #ui { position: absolute; bottom: 20px; left: 20px; color: #fff; text-shadow: 2px 2px #000; font-size: 20px; font-weight: bold; pointer-events: none; }
@@ -51,7 +51,7 @@
             const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshPhongMaterial({ color: 0x444444 }));
             mesh.position.set(x, h/2, z);
             scene.add(mesh);
-            obstacles.push({ minX: x-w/2, maxX: x+w/2, minZ: z-d/2, maxZ: z+d/2, x: x, z: z });
+            obstacles.push({ minX: x-w/2, maxX: x+w/2, minZ: z-d/2, maxZ: z+d/2 });
         }
         for (let i = 0; i < 40; i++) {
             createBuilding(Math.random()*260-130, Math.random()*260-130, 8, Math.random()*20+5, 8);
@@ -76,7 +76,8 @@
         camera.lookAt(0, 1, -5);
 
         const stand = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), new THREE.MeshPhongMaterial({ color: 0xff0000, emissive: 0xff0000, emissiveIntensity: 0.5 }));
-        stand.position.set(0, 0.6, -2.5);
+        // 最初から表示されないよう隠し、少し前に出す
+        stand.position.set(0, 0.6, -2);
         stand.visible = false;
         player.add(stand);
 
@@ -92,13 +93,13 @@
             mesh.add(body);
             
             const eStand = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshPhongMaterial({ color: 0xff4444, emissive: 0xaa0000 }));
-            eStand.position.set(0, 0.6, -1.8); 
+            // 初期位置を本体の少し前方に設定
+            eStand.position.set(0, 0.6, -1.5); 
             eStand.visible = false;
             mesh.add(eStand);
             
             mesh.position.set(x, 0, z);
             scene.add(mesh);
-            // targetType: 'none', 'player', 'enemy' | hateTimer: プレイヤーを狙う残り時間
             enemies.push({ mesh: mesh, stand: eStand, alive: true, hp: 75, attackCooldown: 0, hateTimer: 0 });
         }
         for(let i=0; i<40; i++) spawnEnemy();
@@ -114,26 +115,31 @@
             return false;
         }
 
+        // プレイヤーの攻撃アニメーション
         let isAttacking = false;
         function attack() {
             if(isAttacking) return;
             isAttacking = true;
             stand.visible = true;
             const rushInterval = setInterval(() => {
-                stand.position.set((Math.random()-0.5)*0.8, 0.6+(Math.random()-0.5)*0.6, -2.5+(Math.random()-0.5)*0.4);
+                // プレイヤーの正面(Z-)方向に震わせる
+                stand.position.x = (Math.random()-0.5)*0.8;
+                stand.position.y = 0.6+(Math.random()-0.5)*0.6;
+                stand.position.z = -2.0 + (Math.random()-0.5)*0.5;
+
                 const standPos = new THREE.Vector3();
                 stand.getWorldPosition(standPos);
                 enemies.forEach(e => {
-                    if(e.alive && standPos.distanceTo(e.mesh.position) < 2.5) {
+                    if(e.alive && standPos.distanceTo(e.mesh.position) < 3.0) {
                         e.hp -= 3;
-                        e.hateTimer = 8; // 攻撃されたら8秒間プレイヤーを執拗に狙う
+                        e.hateTimer = 10;
                     }
                 });
             }, 30);
             setTimeout(() => {
                 clearInterval(rushInterval);
                 stand.visible = false; isAttacking = false;
-                stand.position.set(0, 0.6, -2.5);
+                stand.position.set(0, 0.6, -2);
             }, 400);
         }
 
@@ -181,17 +187,14 @@
                 if (distToCenter > areaRadius) e.hp -= currentDmg * delta;
                 if (e.hp <= 0) { e.alive = false; scene.remove(e.mesh); return; }
 
-                // --- ターゲット選定ロジック ---
                 let target = null;
                 let targetDist = Infinity;
 
                 if (e.hateTimer > 0) {
-                    // ヘイトがある場合はプレイヤーを優先
                     target = player;
                     targetDist = distToP;
                     e.hateTimer -= delta;
                 } else {
-                    // 通常の索敵
                     if (distToP < 30) { target = player; targetDist = distToP; }
                     enemies.forEach(other => {
                         if (other === e || !other.alive) return;
@@ -200,7 +203,6 @@
                     });
                 }
 
-                // --- 移動ロジック（ビル回避対応） ---
                 let moveAngle = null;
                 if (distToCenter > areaRadius - 5) {
                     moveAngle = Math.atan2(0 - e.mesh.position.x, 0 - e.mesh.position.z);
@@ -210,17 +212,13 @@
 
                 if (moveAngle !== null) {
                     e.mesh.rotation.y = moveAngle;
-                    
-                    // 正面方向に障害物があるかチェック
                     let stepX = Math.sin(moveAngle) * 8 * delta;
                     let stepZ = Math.cos(moveAngle) * 8 * delta;
                     
                     if (checkCollision(e.mesh.position.x + stepX, e.mesh.position.z + stepZ)) {
-                        // ぶつかるなら左右に避ける（ビル回避ロジック）
                         let avoidAngle = moveAngle + Math.PI / 2;
                         stepX = Math.sin(avoidAngle) * 8 * delta;
                         stepZ = Math.cos(avoidAngle) * 8 * delta;
-                        
                         if (checkCollision(e.mesh.position.x + stepX, e.mesh.position.z + stepZ)) {
                             avoidAngle = moveAngle - Math.PI / 2;
                             stepX = Math.sin(avoidAngle) * 8 * delta;
@@ -228,16 +226,19 @@
                         }
                     }
 
-                    // 攻撃距離（3.0）より遠い場合のみ移動
-                    if (!target || targetDist > 3.0) {
+                    if (!target || targetDist > 3.2) {
                         if (!checkCollision(e.mesh.position.x + stepX, e.mesh.position.z)) e.mesh.position.x += stepX;
                         if (!checkCollision(e.mesh.position.x, e.mesh.position.z + stepZ)) e.mesh.position.z += stepZ;
                     } else if (e.attackCooldown <= 0) {
-                        // 攻撃演出
+                        // --- 敵の攻撃アニメーション修正 ---
                         e.stand.visible = true;
                         const eRush = setInterval(() => {
                             if (!e.alive) { clearInterval(eRush); return; }
-                            e.stand.position.set((Math.random()-0.5)*0.6, 0.6+(Math.random()-0.5)*0.6, -1.8+(Math.random()-0.5)*0.4);
+                            // 敵本体の正面方向に座標をセット
+                            // Zマイナス方向に震わせることで、常に回転している本体の前へ出す
+                            e.stand.position.x = (Math.random()-0.5)*0.6;
+                            e.stand.position.y = 0.6+(Math.random()-0.5)*0.6;
+                            e.stand.position.z = -1.5 - (Math.random()*0.8); // 確実に前方に突き出す
                         }, 30);
                         
                         if (target === player) {
@@ -246,8 +247,12 @@
                             enemies.forEach(ref => { if(ref.mesh === target) ref.hp -= 5; });
                         }
                         
-                        setTimeout(() => { clearInterval(eRush); e.stand.visible = false; e.stand.position.set(0,0.6,-1.8); }, 400);
-                        e.attackCooldown = 1.2;
+                        setTimeout(() => { 
+                            clearInterval(eRush); 
+                            e.stand.visible = false; 
+                            e.stand.position.set(0, 0.6, -1.5); 
+                        }, 400);
+                        e.attackCooldown = 1.5;
                     }
                 }
                 if (e.attackCooldown > 0) e.attackCooldown -= delta;
