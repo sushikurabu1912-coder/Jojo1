@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Jojo Tofu Survivor - Fixed AI Edition</title>
+    <title>Jojo Tofu Survivor - Duel Logic Edition</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: 'MS Gothic', sans-serif; }
         #ui-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 20; }
@@ -140,7 +140,6 @@
             scene.add(eStand);
             group.position.set(Math.cos(angle)*dist, 0, Math.sin(angle)*dist);
             scene.add(group);
-            // AI用パラメータを追加
             enemies.push({ 
                 mesh: group, 
                 stand: eStand, 
@@ -149,7 +148,8 @@
                 attackCooldown: 0, 
                 hateTimer: 0, 
                 pendingDeath: false,
-                offset: new THREE.Vector3((Math.random()-0.5)*4, 0, (Math.random()-0.5)*4) // 包囲用のズレ
+                offset: new THREE.Vector3((Math.random()-0.5)*4, 0, (Math.random()-0.5)*4),
+                duelTarget: null // 敵同士のターゲット
             });
         }
         for(let i=40; i>0; i--) spawnEnemy();
@@ -200,46 +200,34 @@
                 itemSpawnTimer += delta;
                 if (areaRadius > 8) areaRadius -= delta * 1.5;
                 areaWall.scale.set(areaRadius, 1, areaRadius);
-                
                 if (itemSpawnTimer > 6) {
                     itemSpawnTimer = 0;
                     const ang = Math.random() * Math.PI * 2;
                     const r = Math.random() * areaRadius;
                     spawnItem(Math.cos(ang)*r, Math.sin(ang)*r);
                 }
-
                 if (timeStopCooldown > 0) { 
                     timeStopCooldown -= delta; 
                     document.getElementById('timestop-label').innerText = `TS COOLDOWN: ${Math.ceil(timeStopCooldown)}s`; 
-                } else { 
-                    document.getElementById('timestop-label').innerText = "TIME STOP: READY (E)"; 
-                }
+                } else { document.getElementById('timestop-label').innerText = "TIME STOP: READY (E)"; }
             }
 
             if (playerAttackCooldown > 0) { 
                 playerAttackCooldown -= delta; 
                 document.getElementById('attack-label').innerText = `ATTACK CD: ${playerAttackCooldown.toFixed(1)}s`; 
-            } else { 
-                document.getElementById('attack-label').innerText = "ATTACK: READY (SPACE)"; 
-            }
+            } else { document.getElementById('attack-label').innerText = "ATTACK: READY (SPACE)"; }
 
             if (atkBuffTimer > 0) { 
-                atkBuffTimer -= delta; 
-                document.getElementById('buff-label').innerText = `🔥 DAMAGE x2: ${Math.ceil(atkBuffTimer)}s`; 
-            } else { 
-                document.getElementById('buff-label').innerText = ""; 
-            }
+                atkBuffTimer -= delta; document.getElementById('buff-label').innerText = `🔥 DAMAGE x2: ${Math.ceil(atkBuffTimer)}s`; 
+            } else { document.getElementById('buff-label').innerText = ""; }
 
             const currentAreaDmg = 12 * (1.5 + (timeElapsed / 50));
             document.getElementById('area-radius').innerText = Math.floor(areaRadius);
             const distP = Math.sqrt(player.position.x**2 + player.position.z**2);
-            
             if (distP > areaRadius && !isTimeStopped) { 
                 playerHP -= currentAreaDmg * delta; 
                 document.getElementById('warning').style.display = 'block'; 
-            } else { 
-                document.getElementById('warning').style.display = 'none'; 
-            }
+            } else { document.getElementById('warning').style.display = 'none'; }
 
             // プレイヤー移動
             if (keys['ArrowLeft']) player.rotation.y += 3.2 * delta;
@@ -271,64 +259,74 @@
             enemies.forEach(e => {
                 if(!e.alive) return;
                 if(!e.pendingDeath) aliveCount++;
-                
                 if (!isTimeStopped && e.hp <= 0) { 
                     if(Math.random() < 0.30) spawnItem(e.mesh.position.x, e.mesh.position.z);
                     e.alive = false; scene.remove(e.mesh); scene.remove(e.stand); return; 
                 }
-
-                if (isTimeStopped) { 
-                    if (e.pendingDeath) e.mesh.children[0].material.color.set(0x333333); 
-                    return; 
-                }
+                if (isTimeStopped) { if (e.pendingDeath) e.mesh.children[0].material.color.set(0x333333); return; }
 
                 const dCenter = Math.sqrt(e.mesh.position.x**2 + e.mesh.position.z**2);
                 const dP = e.mesh.position.distanceTo(player.position);
                 if (dCenter > areaRadius) e.hp -= currentAreaDmg * delta;
 
-                // --- AI改善ロジック ---
                 let targetPos = new THREE.Vector3(0,0,0);
                 let currentSpeed = 11 * delta;
+                let finalTarget = null;
 
-                // 1. エリア外にいる場合は最優先で中央へ
+                // 1. エリア外なら中央へ
                 if (dCenter > areaRadius * 0.9) {
                     targetPos.set(0, 0, 0);
                     currentSpeed = 15 * delta;
                 } 
-                // 2. プレイヤーが近くにいる(30m)か、攻撃されたら確実に追尾
+                // 2. プレイヤーを追跡 (30m以内または攻撃を受けた場合)
                 else if (e.hateTimer > 0 || dP < 30) {
-                    // 偏差予測: プレイヤーが移動キーを押している場合のみ予測をかける
                     const pDirX = (keys['KeyD']?1:0)-(keys['KeyA']?1:0);
                     const pDirZ = (keys['KeyS']?1:0)-(keys['KeyW']?1:0);
-                    
-                    targetPos.copy(player.position).add(e.offset); // 少しズレた位置（包囲）
-                    
+                    targetPos.copy(player.position).add(e.offset);
                     if (pDirX !== 0 || pDirZ !== 0) {
                         const pMove = new THREE.Vector3(pDirX, 0, pDirZ).normalize().applyAxisAngle(new THREE.Vector3(0,1,0), player.rotation.y);
-                        targetPos.add(pMove.multiplyScalar(5)); // 移動先予測
+                        targetPos.add(pMove.multiplyScalar(5));
                     }
                     currentSpeed = 11.5 * delta;
+                    finalTarget = player.position;
+                    e.duelTarget = null;
                 }
-                // 3. 瀕死かつ近く(15m以内)にアイテムがある場合のみアイテムを拾う
+                // 3. 敵同士の索敵 (範囲を12mに縮小)
                 else {
-                    let nearestItem = null;
-                    if (e.hp < 40) {
-                        let minDist = 15; // アイテムへの反応距離を制限
-                        items.forEach(it => {
-                            if (it.type === 'HP') {
-                                const d = e.mesh.position.distanceTo(it.mesh.position);
-                                if (d < minDist) { nearestItem = it.mesh.position; minDist = d; }
+                    if (!e.duelTarget || !e.duelTarget.alive || e.mesh.position.distanceTo(e.duelTarget.mesh.position) > 15) {
+                        e.duelTarget = null;
+                        for (let other of enemies) {
+                            if (other !== e && other.alive && e.mesh.position.distanceTo(other.mesh.position) < 12) {
+                                e.duelTarget = other;
+                                break;
                             }
-                        });
+                        }
                     }
 
-                    if (nearestItem) {
-                        targetPos = nearestItem;
-                        currentSpeed = 13 * delta;
+                    if (e.duelTarget) {
+                        targetPos.copy(e.duelTarget.mesh.position);
+                        // 敵同士で戦う時はあまり動かない (速度を1/4に)
+                        currentSpeed = 3 * delta;
+                        finalTarget = e.duelTarget.mesh.position;
                     } else {
-                        // 何もなければ中央付近をぶらつく
-                        targetPos.set(0, 0, 0).add(e.offset.clone().multiplyScalar(2));
-                        currentSpeed = 8 * delta;
+                        // 4. 瀕死時のアイテム回収 (範囲12m)
+                        let nearestItem = null;
+                        if (e.hp < 40) {
+                            let minDist = 12;
+                            items.forEach(it => {
+                                if (it.type === 'HP') {
+                                    const d = e.mesh.position.distanceTo(it.mesh.position);
+                                    if (d < minDist) { nearestItem = it.mesh.position; minDist = d; }
+                                }
+                            });
+                        }
+                        if (nearestItem) {
+                            targetPos = nearestItem;
+                            currentSpeed = 13 * delta;
+                        } else {
+                            targetPos.set(0, 0, 0).add(e.offset.clone().multiplyScalar(2));
+                            currentSpeed = 6 * delta;
+                        }
                     }
                 }
 
@@ -351,18 +349,27 @@
                 });
 
                 // 攻撃判定
-                if (dP < 6.5 && e.attackCooldown <= 0) {
-                    e.attackCooldown = 1.4; e.stand.visible = true;
-                    let count = 0;
-                    const eRush = setInterval(() => {
-                        if (!e.alive || isTimeStopped || count > 12) { clearInterval(eRush); e.stand.visible = false; return; }
-                        const dir = new THREE.Vector3().subVectors(player.position, e.mesh.position).normalize();
-                        e.stand.position.copy(e.mesh.position).add(dir.multiplyScalar(dP * 0.8 + Math.random()));
-                        e.stand.position.y = 1.0 + (Math.random()-0.5); 
-                        e.stand.lookAt(player.position); 
-                        count++;
-                    }, 35);
-                    if (playerSH > 0) playerSH -= 12; else playerHP -= 12;
+                if (finalTarget) {
+                    const distToTarget = e.mesh.position.distanceTo(finalTarget);
+                    if (distToTarget < 6.5 && e.attackCooldown <= 0) {
+                        e.attackCooldown = 1.4; e.stand.visible = true;
+                        let count = 0;
+                        const eRush = setInterval(() => {
+                            if (!e.alive || isTimeStopped || count > 12) { clearInterval(eRush); e.stand.visible = false; return; }
+                            const dir = new THREE.Vector3().subVectors(finalTarget, e.mesh.position).normalize();
+                            e.stand.position.copy(e.mesh.position).add(dir.multiplyScalar(distToTarget * 0.8 + Math.random()));
+                            e.stand.position.y = 1.0 + (Math.random()-0.5); 
+                            e.stand.lookAt(finalTarget); 
+                            count++;
+                        }, 35);
+
+                        // ダメージ処理
+                        if (finalTarget === player.position) {
+                            if (playerSH > 0) playerSH -= 12; else playerHP -= 12;
+                        } else if (e.duelTarget) {
+                            e.duelTarget.hp -= 8;
+                        }
+                    }
                 }
                 
                 if (e.attackCooldown > 0) e.attackCooldown -= delta;
@@ -372,10 +379,8 @@
             document.getElementById('survivors-count').innerText = aliveCount;
             document.getElementById('hp-fill').style.width = Math.max(0, playerHP) + "%";
             document.getElementById('sh-fill').style.width = Math.max(0, playerSH) + "%";
-            
             if(playerHP <= 0) { alert("RETIRED!"); location.reload(); }
             if(aliveCount === 1 && playerHP > 0) { alert("VICTORY!"); location.reload(); }
-            
             renderer.render(scene, camera);
         }
         animate();
