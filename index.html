@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Jojo Tofu Survivor - Duel Logic Edition</title>
+    <title>Jojo Tofu Survivor - Anti-Stuck Edition</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: 'MS Gothic', sans-serif; }
         #ui-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 20; }
@@ -64,7 +64,8 @@
                 const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshPhongMaterial({ color: colors[Math.floor(Math.random() * colors.length)] }));
                 mesh.position.set(x + offsetX, h / 2, z + offsetZ);
                 scene.add(mesh);
-                obstacles.push({ minX: mesh.position.x - w/2 - 1.5, maxX: mesh.position.x + w/2 + 1.5, minZ: mesh.position.z - d/2 - 1.5, maxZ: mesh.position.z + d/2 + 1.5 });
+                // 衝突判定用データを保持
+                obstacles.push({ minX: mesh.position.x - w/2, maxX: mesh.position.x + w/2, minZ: mesh.position.z - d/2, maxZ: mesh.position.z + d/2 });
             }
         }
 
@@ -92,20 +93,22 @@
         let playerHP = 100, playerSH = 0, isTimeStopped = false, timeStopCooldown = 0;
         let playerAttackCooldown = 0, atkBuffTimer = 0;
 
-        function checkCollision(nX, nZ) {
-            for (let obs of obstacles) if (nX > obs.minX && nX < obs.maxX && nZ > obs.minZ && nZ < obs.maxZ) return true;
+        function checkCollision(nX, nZ, radius = 1.2) {
+            for (let obs of obstacles) {
+                if (nX > obs.minX - radius && nX < obs.maxX + radius && nZ > obs.minZ - radius && nZ < obs.maxZ + radius) return true;
+            }
             return false;
         }
 
         const items = [];
         function spawnItem(x, z) {
             let finalX = x, finalZ = z;
-            if (checkCollision(x, z)) {
+            if (checkCollision(x, z, 2.0)) {
                 let found = false;
                 for (let i = 0; i < 8; i++) {
                     let angle = (i / 8) * Math.PI * 2;
-                    let tx = x + Math.cos(angle) * 8, tz = z + Math.sin(angle) * 8;
-                    if (!checkCollision(tx, tz)) { finalX = tx; finalZ = tz; found = true; break; }
+                    let tx = x + Math.cos(angle) * 10, tz = z + Math.sin(angle) * 10;
+                    if (!checkCollision(tx, tz, 2.0)) { finalX = tx; finalZ = tz; found = true; break; }
                 }
                 if (!found) return;
             }
@@ -149,7 +152,8 @@
                 hateTimer: 0, 
                 pendingDeath: false,
                 offset: new THREE.Vector3((Math.random()-0.5)*4, 0, (Math.random()-0.5)*4),
-                duelTarget: null // 敵同士のターゲット
+                duelTarget: null,
+                avoidAngle: 0 // 障害物回避用の補助角度
             });
         }
         for(let i=40; i>0; i--) spawnEnemy();
@@ -273,71 +277,79 @@
                 let currentSpeed = 11 * delta;
                 let finalTarget = null;
 
-                // 1. エリア外なら中央へ
+                // --- AI移動先決定ロジック ---
                 if (dCenter > areaRadius * 0.9) {
                     targetPos.set(0, 0, 0);
                     currentSpeed = 15 * delta;
-                } 
-                // 2. プレイヤーを追跡 (30m以内または攻撃を受けた場合)
-                else if (e.hateTimer > 0 || dP < 30) {
-                    const pDirX = (keys['KeyD']?1:0)-(keys['KeyA']?1:0);
-                    const pDirZ = (keys['KeyS']?1:0)-(keys['KeyW']?1:0);
+                } else if (e.hateTimer > 0 || dP < 30) {
                     targetPos.copy(player.position).add(e.offset);
-                    if (pDirX !== 0 || pDirZ !== 0) {
-                        const pMove = new THREE.Vector3(pDirX, 0, pDirZ).normalize().applyAxisAngle(new THREE.Vector3(0,1,0), player.rotation.y);
-                        targetPos.add(pMove.multiplyScalar(5));
-                    }
                     currentSpeed = 11.5 * delta;
                     finalTarget = player.position;
                     e.duelTarget = null;
-                }
-                // 3. 敵同士の索敵 (範囲を12mに縮小)
-                else {
+                } else {
                     if (!e.duelTarget || !e.duelTarget.alive || e.mesh.position.distanceTo(e.duelTarget.mesh.position) > 15) {
                         e.duelTarget = null;
                         for (let other of enemies) {
                             if (other !== e && other.alive && e.mesh.position.distanceTo(other.mesh.position) < 12) {
-                                e.duelTarget = other;
-                                break;
+                                e.duelTarget = other; break;
                             }
                         }
                     }
-
                     if (e.duelTarget) {
                         targetPos.copy(e.duelTarget.mesh.position);
-                        // 敵同士で戦う時はあまり動かない (速度を1/4に)
                         currentSpeed = 3 * delta;
                         finalTarget = e.duelTarget.mesh.position;
                     } else {
-                        // 4. 瀕死時のアイテム回収 (範囲12m)
                         let nearestItem = null;
                         if (e.hp < 40) {
                             let minDist = 12;
-                            items.forEach(it => {
-                                if (it.type === 'HP') {
-                                    const d = e.mesh.position.distanceTo(it.mesh.position);
-                                    if (d < minDist) { nearestItem = it.mesh.position; minDist = d; }
-                                }
-                            });
+                            items.forEach(it => { if (it.type === 'HP') {
+                                const d = e.mesh.position.distanceTo(it.mesh.position);
+                                if (d < minDist) { nearestItem = it.mesh.position; minDist = d; }
+                            }});
                         }
-                        if (nearestItem) {
-                            targetPos = nearestItem;
-                            currentSpeed = 13 * delta;
-                        } else {
-                            targetPos.set(0, 0, 0).add(e.offset.clone().multiplyScalar(2));
-                            currentSpeed = 6 * delta;
-                        }
+                        if (nearestItem) { targetPos = nearestItem; currentSpeed = 13 * delta; }
+                        else { targetPos.set(0, 0, 0).add(e.offset.clone().multiplyScalar(2)); currentSpeed = 6 * delta; }
                     }
                 }
 
+                // --- 障害物回避（引っかかり防止） ---
+                let moveDir = new THREE.Vector3().subVectors(targetPos, e.mesh.position).normalize();
+                let lookAngle = Math.atan2(moveDir.x, moveDir.z);
+
+                // 前方に障害物があるかチェック（3レイ方式）
+                const checkDist = 4.0;
+                let obstacleAhead = checkCollision(
+                    e.mesh.position.x + Math.sin(lookAngle) * checkDist,
+                    e.mesh.position.z + Math.cos(lookAngle) * checkDist
+                );
+
+                if (obstacleAhead) {
+                    // 左右どちらに避けるべきか判定
+                    let leftAngle = lookAngle + 0.8;
+                    let rightAngle = lookAngle - 0.8;
+                    let leftBlocked = checkCollision(e.mesh.position.x + Math.sin(leftAngle) * checkDist, e.mesh.position.z + Math.cos(leftAngle) * checkDist);
+                    let rightBlocked = checkCollision(e.mesh.position.x + Math.sin(rightAngle) * checkDist, e.mesh.position.z + Math.cos(rightAngle) * checkDist);
+
+                    if (!leftBlocked) lookAngle = leftAngle;
+                    else if (!rightBlocked) lookAngle = rightAngle;
+                    else lookAngle += Math.PI; // どん詰まりなら反転
+                    
+                    currentSpeed *= 0.8; // 回避中は少し減速
+                }
+
                 // 移動実行
-                e.mesh.lookAt(targetPos.x, 0, targetPos.z);
-                const moveAngle = e.mesh.rotation.y;
-                let sX = Math.sin(moveAngle) * currentSpeed;
-                let sZ = Math.cos(moveAngle) * currentSpeed;
+                e.mesh.rotation.y = lookAngle;
+                let sX = Math.sin(lookAngle) * currentSpeed;
+                let sZ = Math.cos(lookAngle) * currentSpeed;
+
                 if (!checkCollision(e.mesh.position.x + sX, e.mesh.position.z + sZ)) {
                     e.mesh.position.x += sX;
                     e.mesh.position.z += sZ;
+                } else {
+                    // まだぶつかる場合は、壁に沿って滑るような動きを試行
+                    if (!checkCollision(e.mesh.position.x + sX, e.mesh.position.z)) e.mesh.position.x += sX;
+                    else if (!checkCollision(e.mesh.position.x, e.mesh.position.z + sZ)) e.mesh.position.z += sZ;
                 }
 
                 // アイテム取得
@@ -362,8 +374,6 @@
                             e.stand.lookAt(finalTarget); 
                             count++;
                         }, 35);
-
-                        // ダメージ処理
                         if (finalTarget === player.position) {
                             if (playerSH > 0) playerSH -= 12; else playerHP -= 12;
                         } else if (e.duelTarget) {
