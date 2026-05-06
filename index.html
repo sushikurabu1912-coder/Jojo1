@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>TOFU SURVIVOR: ERASED TIME</title>
+    <title>TOFU SURVIVOR: VICTORY EDITION</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', sans-serif; user-select: none; transition: filter 0.3s; }
         .time-stopped { filter: invert(100%) hue-rotate(180deg); }
@@ -19,13 +19,22 @@
         #shield-fill { width: 0%; height: 100%; background: linear-gradient(90deg, #0055ff, #00aaff); transition: width 0.2s; }
         #skill-ui { color: #ff0; font-weight: bold; font-size: 18px; margin-bottom: 10px; text-transform: uppercase; }
         #warning { position: absolute; top: 35%; left: 50%; transform: translateX(-50%); color: #ff0044; font-size: 48px; font-weight: bold; display: none; }
+        
+        /* 勝利メッセージ用スタイル */
+        #victory-message {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            color: #fff; font-size: 64px; font-weight: bold; text-shadow: 0 0 20px #f0f, 0 0 40px #0ff;
+            display: none; z-index: 200; text-align: center; pointer-events: auto;
+        }
     </style>
 </head>
 <body>
     <div id="time-skip-overlay"></div>
+    <div id="victory-message">You are last survivor !!<br><span style="font-size: 24px; color: #ccc;">(Click to Restart)</span></div>
+
     <div id="start-screen">
         <h1 style="font-size: 48px; color: #f0f;">TOFU SURVIVOR</h1>
-        <p>消し飛ばし中：プレイヤー無敵 ＆ 敵の認識から消失</p>
+        <p>勝利判定の追加：最後の一人になればクリアです</p>
         <div class="char-container">
             <div class="char-card" onclick="startGame('white')"><h3 style="color:#fff">WHITE</h3><p>無敵化</p></div>
             <div class="char-card" onclick="startGame('cyan')"><h3 style="color:#0ff">CYAN</h3><p>時飛ばし(6s)</p></div>
@@ -46,7 +55,7 @@
     <script type="module">
         import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.module.min.js';
 
-        let isGameStarted = false, areaRadius = 250;
+        let isGameStarted = false, areaRadius = 250, isGameOver = false;
         let charStats = { speed: 22, attack: 15, color: 0xffffff, type: 'white' };
         let playerHP = 100, playerShield = 0;
         let isInvincible = false, isTimeStopped = false, isTimeSkipping = false;
@@ -142,6 +151,8 @@
             isGameStarted = true;
         };
 
+        document.getElementById('victory-message').onclick = () => location.reload();
+
         window.addEventListener('keydown', (e) => keys[e.code] = true);
         window.addEventListener('keyup', (e) => keys[e.code] = false);
 
@@ -151,7 +162,7 @@
         function animate() {
             requestAnimationFrame(animate);
             const delta = Math.min(clock.getDelta(), 0.1);
-            if (!isGameStarted) return;
+            if (!isGameStarted || isGameOver) return;
 
             if (skillCd > 0) skillCd -= delta;
 
@@ -199,17 +210,12 @@
             entities.forEach(e => {
                 if (!e.alive || isTimeStopped) return;
                 
-                // 【ターゲットロジックの修正】消し飛ばし中はプレイヤーを認識できない
                 let curTarget = null;
                 let minDist = Infinity;
-
-                // プレイヤーをターゲット候補に入れるかチェック
                 if (!isTimeSkipping) {
                     minDist = e.group.position.distanceTo(player.position);
                     curTarget = player;
                 }
-
-                // 他のBOTとの距離もチェック
                 entities.forEach(other => { 
                     if (other.alive && other.id !== e.id) { 
                         const d = e.group.position.distanceTo(other.group.position); 
@@ -218,7 +224,6 @@
                 });
                 
                 e.target = curTarget;
-
                 let moveDir = new THREE.Vector3();
                 
                 if (e.target) {
@@ -232,7 +237,6 @@
                         else e.aiState = 'rush';
                         e.stateTimer = 1.0 + Math.random() * 2;
                     }
-
                     if (e.aiState === 'rush') moveDir.copy(toTargetVec);
                     else if (e.aiState === 'retreat') moveDir.copy(toTargetVec).negate();
                     else moveDir.set(-toTargetVec.z, 0, toTargetVec.x).multiplyScalar(e.strafeDir);
@@ -252,7 +256,6 @@
                         e.stand.position.y = 0.75 + (Math.random()-0.5)*0.3;
                         e.stand.position.z += (Math.random()-0.5)*0.3;
                         
-                        // 【ダメージ無効化の修正】消し飛ばし中はプレイヤーにダメージを与えない
                         if (!isTimeSkipping && e.stand.position.distanceTo(player.position) < 3.0 && !isInvincible) { 
                             const dmg = charStats.attack * botDelta * 10;
                             if (playerShield > 0) playerShield -= dmg; else playerHP -= dmg; 
@@ -260,34 +263,37 @@
                         entities.forEach(v => { if (v.alive && v.id !== e.id && e.stand.position.distanceTo(v.group.position) < 3.0) v.hp -= charStats.attack * botDelta * 8; });
                     }
                 } else {
-                    // ターゲットがいない（時飛ばし中の唯一のプレイヤーだった場合など）はうろつく
-                    if (e.stateTimer <= 0) {
-                        e.aiState = 'idle';
-                        e.stateTimer = 1.0;
-                    }
+                    if (e.stateTimer <= 0) { e.aiState = 'idle'; e.stateTimer = 1.0; }
                     e.stateTimer -= botDelta;
                 }
 
                 if (e.group.position.length() > areaRadius * 0.8) moveDir.add(e.group.position.clone().negate().normalize()).normalize();
                 e.group.position.add(moveDir.multiplyScalar(14 * botDelta));
                 checkBuildingCollision(e.group.position, 0.8);
-
                 if (moveDir.length() > 0.01 && !e.stand.visible) {
                     e.group.lookAt(e.group.position.x + moveDir.x, 0, e.group.position.z + moveDir.z);
                 }
-                
                 if (e.group.position.length() > areaRadius) e.hp -= botDelta * 35;
                 if (e.hp <= 0) { e.alive = false; scene.remove(e.group); scene.remove(e.stand); }
             });
 
             items.forEach((it, idx) => { if (player.position.distanceTo(it.mesh.position) < 2.5) { if (it.type === 'hp') playerHP = Math.min(100, playerHP + 40); else playerShield = Math.min(100, playerShield + 60); scene.remove(it.mesh); items.splice(idx, 1); setTimeout(spawnItem, 8000); } });
             if (player.position.length() > areaRadius) playerHP -= delta * 25;
+            
+            const survivorCount = entities.filter(e => e.alive).length + 1;
             document.getElementById('hp-fill').style.width = Math.max(0, playerHP) + "%";
             document.getElementById('shield-fill').style.width = playerShield + "%";
-            document.getElementById('survivors-count').innerText = entities.filter(e => e.alive).length + 1;
+            document.getElementById('survivors-count').innerText = survivorCount;
             document.getElementById('area-radius').innerText = Math.floor(areaRadius);
             document.getElementById('warning').style.display = (player.position.length() > areaRadius) ? 'block' : 'none';
-            if (playerHP <= 0) { alert("RANK: " + (entities.filter(e => e.alive).length + 1)); location.reload(); }
+
+            // 勝利判定
+            if (survivorCount === 1 && playerHP > 0) {
+                isGameOver = true;
+                document.getElementById('victory-message').style.display = 'block';
+            }
+
+            if (playerHP <= 0) { alert("RANK: " + survivorCount); location.reload(); }
             renderer.render(scene, camera);
         }
         animate();
