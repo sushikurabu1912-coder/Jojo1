@@ -1,5 +1,66 @@
-<script type="module">
-        import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.module.min.js';
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>TOFU SURVIVOR: 5MIN EDITION</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', sans-serif; user-select: none; transition: filter 0.3s; }
+        .time-stopped { filter: invert(100%) hue-rotate(180deg); }
+        #time-skip-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255, 0, 0, 0.3); pointer-events: none; z-index: 50; display: none; }
+        .full-screen-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; text-align: center; }
+        #start-screen { background: rgba(0, 0, 30, 0.95); color: white; }
+        .char-container { display: flex; gap: 20px; margin-top: 30px; }
+        .char-card { border: 3px solid #444; padding: 20px; border-radius: 15px; cursor: pointer; transition: 0.3s; background: #111; width: 160px; }
+        .char-card:hover { border-color: #f0f; transform: translateY(-10px); box-shadow: 0 0 20px #f0f; }
+        #gameover-screen { background: rgba(50, 0, 0, 0.9); color: #ff0044; display: none; z-index: 200; cursor: pointer; }
+        .retire-text { font-size: 80px; font-weight: bold; text-shadow: 0 0 20px #000; margin: 0; }
+        .rank-text { font-size: 32px; color: #fff; margin-top: 20px; }
+        #ui-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 20; display: none; }
+        #area-ui { position: absolute; top: 20px; right: 20px; color: #f0f; background: rgba(0,0,0,0.8); padding: 15px; border: 2px solid #f0f; border-radius: 10px; font-weight: bold; text-align: right; }
+        #status-ui { position: absolute; bottom: 30px; left: 30px; color: #fff; text-shadow: 2px 2px #000; }
+        .bar-container { width: 250px; height: 15px; background: #222; border: 2px solid #fff; margin-bottom: 8px; overflow: hidden; border-radius: 3px; }
+        #hp-fill { width: 100%; height: 100%; background: linear-gradient(90deg, #0a0, #0f0); transition: width 0.2s; }
+        #shield-fill { width: 0%; height: 100%; background: linear-gradient(90deg, #0055ff, #00aaff); transition: width 0.2s; }
+        #skill-ui { color: #ff0; font-weight: bold; font-size: 18px; margin-bottom: 10px; text-transform: uppercase; }
+        #warning { position: absolute; top: 35%; left: 50%; transform: translateX(-50%); color: #ff0044; font-size: 48px; font-weight: bold; display: none; }
+        #victory-message { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #fff; font-size: 64px; font-weight: bold; text-shadow: 0 0 20px #f0f, 0 0 40px #0ff; display: none; z-index: 200; text-align: center; pointer-events: auto; }
+    </style>
+</head>
+<body>
+    <div id="time-skip-overlay"></div>
+    <div id="victory-message">Champion of 100 Survivors !!<br><span style="font-size: 24px; color: #ccc;">(Click to Restart)</span></div>
+    <div id="gameover-screen" class="full-screen-overlay" onclick="location.reload()">
+        <p class="retire-text">RETIRE</p>
+        <p class="rank-text">RANK: <span id="final-rank">0</span> / 100</p>
+        <p style="color: #aaa; margin-top: 40px;">Click to Re-Challenge</p>
+    </div>
+    <div id="start-screen" class="full-screen-overlay">
+        <h1 style="font-size: 48px; color: #f0f;">TOFU SURVIVOR 100</h1>
+        <p>VFX強化：攻撃を当ててダメージをポップさせろ！</p>
+        <div class="char-container">
+            <div class="char-card" onclick="startGame('white')"><h3 style="color:#fff">WHITE</h3><p>無敵化</p></div>
+            <div class="char-card" onclick="startGame('cyan')"><h3 style="color:#0ff">CYAN</h3><p>時飛ばし</p></div>
+            <div class="char-card" onclick="startGame('gold')"><h3 style="color:#fd0">GOLD</h3><p>時停止</p></div>
+        </div>
+    </div>
+    <div id="ui-container">
+        <div id="warning">⚠️ OUT OF AREA ⚠️</div>
+        <div id="area-ui">SURVIVORS: <span id="survivors-count">100</span><br>SAFE RADIUS: <span id="area-radius">350</span>m</div>
+        <div id="status-ui">
+            <div id="skill-ui">CARDS: 0 / 3</div>
+            SHIELD <div class="bar-container"><div id="shield-fill"></div></div>
+            HP <div class="bar-container"><div id="hp-fill"></div></div>
+        </div>
+    </div>
+
+    <!-- GitHub.dev等で動きやすいよう、ライブラリをCDN経由で読み込み -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <script>
+        // 設定値: ゲーム進行を遅らせるための係数
+        const AREA_SHRINK_SPEED = 0.11; // 0.8から0.11へ（約5分で収縮）
+        const BOT_MOVE_SPEED = 6;       // 12から6へ（接敵率低下）
+        const BOT_ATTACK_CD = 4.0;      // 2.0から4.0へ（乱戦の脱落速度低下）
 
         let isGameStarted = false, areaRadius = 350, isGameOver = false;
         let charStats = { speed: 22, attack: 40, color: 0xffffff, type: 'white' };
@@ -142,7 +203,7 @@
 
             pAttackCd -= delta;
             if (keys['Space'] && pAttackCd <= 0) { 
-                pAttackCd = 0.35; pStand.visible = true; pCameraShakeAmount = 0.5; setTimeout(() => pStand.visible = false, 150); 
+                pAttackCd = 0.35; pStand.visible = true; setTimeout(() => pStand.visible = false, 150); 
                 const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
                 pStand.position.copy(player.position).add(fwd.multiplyScalar(2.8));
                 pStand.position.y = 0.75;
@@ -183,11 +244,14 @@
                 if (l.life <= 0) { scene.remove(l.sprite); labels.splice(i, 1); }
             }
 
-            // --- BOTS AI & AREA SPEED ADJUSTED FOR 5 MINS ---
             const botDelta = isTimeStopped ? 0 : (isTimeSkipping ? delta * 0.2 : delta);
-            // エリア縮小を大幅に減速 (0.8 -> 0.11)
-            areaRadius -= botDelta * 0.11;
-            areaWall.geometry.dispose(); areaWall.geometry = new THREE.CylinderGeometry(areaRadius, areaRadius, 150, 64, 1, true);
+            
+            // --- ゲーム進行速度調整 (5分設定) ---
+            areaRadius -= botDelta * AREA_SHRINK_SPEED;
+            document.getElementById('area-radius').innerText = Math.floor(areaRadius);
+            
+            areaWall.geometry.dispose(); 
+            areaWall.geometry = new THREE.CylinderGeometry(areaRadius, areaRadius, 150, 64, 1, true);
 
             entities.forEach(e => {
                 if (!e.alive || isTimeStopped) { e.stand.visible = false; return; }
@@ -198,14 +262,13 @@
                 
                 if (curTarget) {
                     const toVec = new THREE.Vector3().subVectors(curTarget.position, e.group.position).normalize();
-                    // ボットの移動を減速 (12 -> 6) して接敵を遅らせる
-                    e.group.position.add(toVec.multiplyScalar(6 * botDelta));
+                    e.group.position.add(toVec.multiplyScalar(BOT_MOVE_SPEED * botDelta));
                     checkBuildingCollision(e.group.position, 0.8);
 
                     e.attackCd -= botDelta;
-                    // ボットの攻撃間隔を延長 (2.0 -> 4.0) して生存率を上げる
                     if (minDist < 6.0 && e.attackCd <= 0) {
-                        e.attackCd = 4.0; e.stand.visible = true;
+                        e.attackCd = BOT_ATTACK_CD; 
+                        e.stand.visible = true;
                         setTimeout(() => e.stand.visible = false, 400);
                         const attackPos = new THREE.Vector3().copy(e.group.position).lerp(curTarget.position, 0.5);
                         e.stand.position.copy(attackPos); e.stand.position.y = 0.75;
@@ -226,13 +289,24 @@
             document.getElementById('survivors-count').innerText = survivorCount;
 
             if (playerHP <= 0 && !isGameOver) {
-                isGameOver = true; document.getElementById('final-rank').innerText = survivorCount; document.getElementById('gameover-screen').style.display = 'flex';
+                isGameOver = true; 
+                document.getElementById('final-rank').innerText = survivorCount; 
+                document.getElementById('gameover-screen').style.display = 'flex';
             }
             if (survivorCount === 1 && playerHP > 0) {
-                isGameOver = true; document.getElementById('victory-message').style.display = 'block';
+                isGameOver = true; 
+                document.getElementById('victory-message').style.display = 'block';
             }
 
             renderer.render(scene, camera);
         }
         animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
     </script>
+</body>
+</html>
