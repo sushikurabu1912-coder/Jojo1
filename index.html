@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>TOFU SURVIVOR: ULTIMATE EVOLUTION</title>
+    <title>TOFU SURVIVOR: BALANCED STAND BATTLE</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', sans-serif; user-select: none; transition: filter 0.3s; }
         .time-stopped { filter: invert(100%) hue-rotate(180deg); }
@@ -36,7 +36,7 @@
     </div>
     <div id="start-screen" class="full-screen-overlay">
         <h1 style="font-size: 48px; color: #f0f;">TOFU SURVIVOR</h1>
-        <p>5枚で解放、10枚で極限強化。己の能力で生き残れ。</p>
+        <p>ダメージを抑え、持久戦に耐え抜いてカードを集めろ</p>
         <div class="char-container">
             <div class="char-card" onclick="startGame('white')"><h3 style="color:#fff">WHITE</h3><p>無敵化</p></div>
             <div class="char-card" onclick="startGame('cyan')"><h3 style="color:#0ff">CYAN</h3><p>時飛ばし</p></div>
@@ -109,15 +109,11 @@
                 tx = Math.cos(ang)*dist; tz = Math.sin(ang)*dist;
                 if (!obstacles.some(o => new THREE.Vector2(tx, tz).distanceTo(o.pos) < o.radius+2)) ok = true;
             }
-            mesh.position.set(tx, 1.0, tz);
-            scene.add(mesh);
-            items.push({ mesh, type });
+            mesh.position.set(tx, 1.0, tz); scene.add(mesh); items.push({ mesh, type });
         }
         function dropSkillCard(pos) {
             const mesh = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.1, 1.8), new THREE.MeshPhongMaterial({ color: 0x00ffff, emissive: 0x006666 }));
-            mesh.position.set(pos.x, 0.5, pos.z);
-            scene.add(mesh);
-            items.push({ mesh, type: 'card' });
+            mesh.position.set(pos.x, 0.5, pos.z); scene.add(mesh); items.push({ mesh, type: 'card' });
         }
         for(let i=0; i<15; i++) spawnItem();
 
@@ -171,14 +167,12 @@
             const delta = Math.min(clock.getDelta(), 0.1);
             if (!isGameStarted || isGameOver) return;
 
-            // 強化判定としきい値
             const isEvolved = collectedCards >= 10;
             let maxUses = 0;
             if (charStats.type === 'gold') maxUses = isEvolved ? 3 : 1;
             if (charStats.type === 'cyan') maxUses = isEvolved ? 4 : 2;
             if (charStats.type === 'white') maxUses = isEvolved ? 3 : 1;
 
-            // UI logic
             const skillLabel = document.getElementById('skill-ui');
             if (skillCd > 0) {
                 skillLabel.innerText = "SKILL ACTIVE..."; skillLabel.style.color = "#f0f";
@@ -208,7 +202,6 @@
                 pCameraShakeAmount -= delta * 3.0;
             } else { camera.position.copy(P_CAMERA_BASE_POS); }
 
-            // Skill logic [R] (5枚で解放)
             if (keys['KeyR'] && skillCd <= 0 && collectedCards >= 5 && skillUses < maxUses) {
                 skillUses++;
                 if (charStats.type === 'white') {
@@ -238,7 +231,8 @@
                 pStand.position.x += (Math.random()-0.5)*0.3; pStand.position.y = 0.75 + (Math.random()-0.5)*0.3; pStand.position.z += (Math.random()-0.5)*0.3;
                 entities.forEach(e => {
                     if (e.alive && e.group.position.distanceTo(pStand.position) < 3.0) {
-                        e.hp -= charStats.attack * delta * 12;
+                        // プレイヤーダメージ減少: 12 -> 5
+                        e.hp -= charStats.attack * delta * 5;
                         if (e.hp <= 0) e.killedByPlayer = true;
                     }
                 });
@@ -269,10 +263,16 @@
                     if (e.stand.visible) {
                         const attackPos = new THREE.Vector3().copy(e.group.position).lerp(e.target.position, 0.45); e.stand.position.copy(attackPos);
                         if (!isTimeSkipping && e.stand.position.distanceTo(player.position) < 3.0 && !isInvincible) { 
-                            const dmg = charStats.attack * botDelta * 10;
+                            // 敵からプレイヤーへのダメージ減少: 10 -> 4
+                            const dmg = charStats.attack * botDelta * 4;
                             if (playerShield > 0) playerShield -= dmg; else playerHP -= dmg; 
                         }
-                        entities.forEach(v => { if (v.alive && v.id !== e.id && e.stand.position.distanceTo(v.group.position) < 3.0) v.hp -= charStats.attack * botDelta * 8; });
+                        entities.forEach(v => { 
+                            if (v.alive && v.id !== e.id && e.stand.position.distanceTo(v.group.position) < 3.0) {
+                                // 敵同士のダメージ減少: 8 -> 3
+                                v.hp -= charStats.attack * botDelta * 3;
+                            }
+                        });
                     }
                 }
                 e.group.position.add(moveDir.multiplyScalar(14 * botDelta));
