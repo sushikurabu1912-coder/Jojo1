@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>TOFU SURVIVOR: BALANCED STAND BATTLE</title>
+    <title>TOFU SURVIVOR: STAND & EVOLUTION</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', sans-serif; user-select: none; transition: filter 0.3s; }
         .time-stopped { filter: invert(100%) hue-rotate(180deg); }
@@ -36,7 +36,7 @@
     </div>
     <div id="start-screen" class="full-screen-overlay">
         <h1 style="font-size: 48px; color: #f0f;">TOFU SURVIVOR</h1>
-        <p>ダメージを抑え、持久戦に耐え抜いてカードを集めろ</p>
+        <p>3枚で解放、7枚で極限強化。敵の赤いスタンドを叩け！</p>
         <div class="char-container">
             <div class="char-card" onclick="startGame('white')"><h3 style="color:#fff">WHITE</h3><p>無敵化</p></div>
             <div class="char-card" onclick="startGame('cyan')"><h3 style="color:#0ff">CYAN</h3><p>時飛ばし</p></div>
@@ -47,7 +47,7 @@
         <div id="warning">⚠️ OUT OF AREA ⚠️</div>
         <div id="area-ui">SURVIVORS: <span id="survivors-count">40</span><br>SAFE RADIUS: <span id="area-radius">250</span>m</div>
         <div id="status-ui">
-            <div id="skill-ui">CARDS: 0 / 5</div>
+            <div id="skill-ui">CARDS: 0 / 3</div>
             SHIELD <div class="bar-container"><div id="shield-fill"></div></div>
             HP <div class="bar-container"><div id="hp-fill"></div></div>
         </div>
@@ -132,7 +132,8 @@
             const group = new THREE.Group();
             const body = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.5, 1.5), new THREE.MeshPhongMaterial({ color: [0xffff00, 0x00ffff, 0xff00ff, 0xff8800][Math.floor(Math.random()*4)] }));
             body.position.y = 0.75; group.add(body);
-            const stand = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.5, 1.5), new THREE.MeshPhongMaterial({ color: 0xff0000, transparent: true, opacity: 0.8, emissive: 0x440000 }));
+            // 敵スタンドを本体と同じサイズの赤い立方体に変更
+            const stand = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.5, 1.5), new THREE.MeshPhongMaterial({ color: 0xff0000, transparent: true, opacity: 0.9, emissive: 0x660000 }));
             stand.visible = false; scene.add(stand);
             let tx, tz, spawned = false;
             while(!spawned) {
@@ -167,7 +168,8 @@
             const delta = Math.min(clock.getDelta(), 0.1);
             if (!isGameStarted || isGameOver) return;
 
-            const isEvolved = collectedCards >= 10;
+            // 強化しきい値を7枚に変更
+            const isEvolved = collectedCards >= 7;
             let maxUses = 0;
             if (charStats.type === 'gold') maxUses = isEvolved ? 3 : 1;
             if (charStats.type === 'cyan') maxUses = isEvolved ? 4 : 2;
@@ -178,10 +180,10 @@
                 skillLabel.innerText = "SKILL ACTIVE..."; skillLabel.style.color = "#f0f";
             } else if (skillUses >= maxUses) {
                 skillLabel.innerText = "SKILL DEPLETED"; skillLabel.style.color = "#f00";
-            } else if (collectedCards < 5) {
-                skillLabel.innerText = `CARDS: ${collectedCards} / 5 (LOCKED)`; skillLabel.style.color = "#888";
+            } else if (collectedCards < 3) { // 3枚で解放
+                skillLabel.innerText = `CARDS: ${collectedCards} / 3 (LOCKED)`; skillLabel.style.color = "#888";
             } else {
-                const levelText = isEvolved ? "EVOLVED" : "READY";
+                const levelText = isEvolved ? "MAX EVOLVED" : "READY";
                 skillLabel.innerText = `${levelText} [R] (${skillUses}/${maxUses})`; skillLabel.style.color = isEvolved ? "#0ff" : "#ff0";
             }
 
@@ -202,7 +204,8 @@
                 pCameraShakeAmount -= delta * 3.0;
             } else { camera.position.copy(P_CAMERA_BASE_POS); }
 
-            if (keys['KeyR'] && skillCd <= 0 && collectedCards >= 5 && skillUses < maxUses) {
+            // スキル発動 (3枚で解放)
+            if (keys['KeyR'] && skillCd <= 0 && collectedCards >= 3 && skillUses < maxUses) {
                 skillUses++;
                 if (charStats.type === 'white') {
                     const dur = isEvolved ? 7000 : 5000;
@@ -231,7 +234,6 @@
                 pStand.position.x += (Math.random()-0.5)*0.3; pStand.position.y = 0.75 + (Math.random()-0.5)*0.3; pStand.position.z += (Math.random()-0.5)*0.3;
                 entities.forEach(e => {
                     if (e.alive && e.group.position.distanceTo(pStand.position) < 3.0) {
-                        // プレイヤーダメージ減少: 12 -> 5
                         e.hp -= charStats.attack * delta * 5;
                         if (e.hp <= 0) e.killedByPlayer = true;
                     }
@@ -262,14 +264,15 @@
                     if (minDist < 6.5 && e.attackCd <= 0) { e.attackCd = 1.5; e.stand.visible = true; setTimeout(() => e.stand.visible = false, 400); }
                     if (e.stand.visible) {
                         const attackPos = new THREE.Vector3().copy(e.group.position).lerp(e.target.position, 0.45); e.stand.position.copy(attackPos);
+                        // 震え演出
+                        e.stand.position.x += (Math.random()-0.5)*0.2; e.stand.position.y += (Math.random()-0.5)*0.2; e.stand.position.z += (Math.random()-0.5)*0.2;
+                        
                         if (!isTimeSkipping && e.stand.position.distanceTo(player.position) < 3.0 && !isInvincible) { 
-                            // 敵からプレイヤーへのダメージ減少: 10 -> 4
                             const dmg = charStats.attack * botDelta * 4;
                             if (playerShield > 0) playerShield -= dmg; else playerHP -= dmg; 
                         }
                         entities.forEach(v => { 
                             if (v.alive && v.id !== e.id && e.stand.position.distanceTo(v.group.position) < 3.0) {
-                                // 敵同士のダメージ減少: 8 -> 3
                                 v.hp -= charStats.attack * botDelta * 3;
                             }
                         });
