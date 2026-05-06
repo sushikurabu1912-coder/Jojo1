@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Tofu Survivor - Exclusive Ability</title>
+    <title>Tofu Survivor - Ora Ora Edition</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: 'MS Gothic', sans-serif; }
         
@@ -109,11 +109,13 @@
         camera.position.set(0, 8, 12);
         camera.lookAt(0, 0, -5);
 
-        const stand = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.6, 1.6), new THREE.MeshPhongMaterial({ color: 0xff0000, emissive: 0x550000 }));
+        // スタンドの初期化
+        const stand = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.6, 1.6), new THREE.MeshPhongMaterial({ color: 0xff0000, emissive: 0x330000 }));
         stand.visible = false;
         player.add(stand);
 
         let playerHP = 100, isTimeStopped = false, timeStopCooldown = 0, attackCooldown = 0;
+        let isAttacking = false;
         const enemies = [], keys = {};
 
         window.startGame = (type) => {
@@ -122,16 +124,20 @@
             if (type === 'power') charStats = { speed: 17, attack: 80, color: 0xffd700, canStop: true };
             
             pBody.material.color.setHex(charStats.color);
-            document.getElementById('start-screen').style.display = 'none';
-            document.getElementById('ui-container').style.display = 'block';
             
-            // GOLD（canStop持ち）の場合だけ時停止UIを出す
+            // GOLDなら紫、それ以外は赤
             if (charStats.canStop) {
+                stand.material.color.setHex(0xA020F0); // 明るい紫
+                stand.material.emissive.setHex(0x4B0082); 
                 document.getElementById('ts-label').style.display = 'block';
             } else {
+                stand.material.color.setHex(0xff0000);
+                stand.material.emissive.setHex(0x330000);
                 document.getElementById('ts-label').style.display = 'none';
             }
             
+            document.getElementById('start-screen').style.display = 'none';
+            document.getElementById('ui-container').style.display = 'block';
             isGameStarted = true;
         };
 
@@ -154,8 +160,6 @@
 
         window.addEventListener('keydown', (e) => {
             keys[e.code] = true;
-            
-            // 時間停止の実行条件：GOLDであること(canStop)
             if (e.code === 'KeyE' && charStats.canStop && timeStopCooldown <= 0 && !isTimeStopped && isGameStarted) {
                 isTimeStopped = true;
                 document.getElementById('time-stop-overlay').style.display = 'block';
@@ -191,13 +195,35 @@
                 }
             }
 
-            if (keys['Space'] && attackCooldown <= 0) {
+            // ラッシュ攻撃 (SPACE)
+            if (keys['Space'] && attackCooldown <= 0 && !isAttacking) {
+                isAttacking = true;
                 attackCooldown = 1.0;
                 stand.visible = true;
-                setTimeout(() => stand.visible = false, 500);
-                enemies.forEach(e => {
-                    if (e.alive && e.mesh.position.distanceTo(player.position) < 6) e.hp -= charStats.attack;
-                });
+                
+                let rushCount = 0;
+                const rushInterval = setInterval(() => {
+                    // 前方に配置 + 高速微振動 (ブルブル)
+                    stand.position.set(
+                        (Math.random() - 0.5) * 1.5, // 左右の揺れ
+                        0.75 + (Math.random() - 0.5) * 1.5, // 上下の揺れ
+                        -2.5 - Math.random() * 0.5 // 前方の位置 + 前後の揺れ
+                    );
+                    
+                    enemies.forEach(e => {
+                        if (e.alive && e.mesh.position.distanceTo(player.position.clone().add(new THREE.Vector3(0,0,-3).applyQuaternion(player.quaternion))) < 5) {
+                            e.hp -= charStats.attack / 10;
+                        }
+                    });
+
+                    rushCount++;
+                    if (rushCount > 20) {
+                        clearInterval(rushInterval);
+                        stand.visible = false;
+                        stand.position.set(0, 0, 0);
+                        isAttacking = false;
+                    }
+                }, 30);
             }
 
             if (!isTimeStopped) {
@@ -227,12 +253,9 @@
             }
 
             document.getElementById('hp-fill').style.width = Math.max(0, playerHP) + "%";
-            
-            // 時停止UIの更新（GOLDの時だけ）
             if (charStats.canStop) {
                 document.getElementById('ts-label').innerText = timeStopCooldown > 0 ? `TS CD: ${Math.ceil(timeStopCooldown)}` : "TIME STOP: READY (E)";
             }
-            
             document.getElementById('at-label').innerText = attackCooldown > 0 ? `AT CD: ${attackCooldown.toFixed(1)}` : "ATTACK: READY (SPACE)";
             document.getElementById('area-radius').innerText = Math.floor(areaRadius);
             document.getElementById('survivors-count').innerText = enemies.filter(e => e.alive).length + 1;
