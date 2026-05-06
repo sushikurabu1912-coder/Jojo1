@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Tofu Survivor - Tactical Fog of War</title>
+    <title>Tofu Survivor - Absolute Aim Fix</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: 'MS Gothic', sans-serif; }
         #start-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 25, 0.95); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; color: white; text-align: center; }
@@ -21,8 +21,8 @@
 <body>
 
     <div id="start-screen">
-        <h1 style="font-size: 32px; color: #f0f;">TACTICAL BATTLE ROYALE</h1>
-        <p>索敵範囲が制限されました。慎重に進め。</p>
+        <h1 style="font-size: 32px; color: #f0f;">FIXED AIM SURVIVOR</h1>
+        <p>敵の攻撃が正確にあなたを狙うようになりました。</p>
         <div class="char-container">
             <div class="char-card" onclick="startGame('white')"><h3>WHITE</h3><p>無敵(E)</p></div>
             <div class="char-card" onclick="startGame('cyan')"><h3>CYAN</h3><p>時飛ばし(E)</p></div>
@@ -43,10 +43,10 @@
         import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.module.min.js';
 
         let isGameStarted = false, areaRadius = 250;
-        let charStats = { speed: 22, attack: 45, color: 0xffffff, type: 'white' };
+        let charStats = { speed: 22, attack: 45, color: 0xffffff };
         let playerHP = 100, playerShield = 0;
         const entities = [], obstacles = [], items = [], keys = {};
-        const DETECT_RANGE = 25; // 索敵範囲を大幅に制限（以前は無限/超広範囲）
+        const DETECT_RANGE = 30; 
 
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x000005);
@@ -64,35 +64,41 @@
         // ビル群
         const colors = [0xff4444, 0x44ff44, 0x4444ff, 0xffff44, 0xff44ff, 0x44ffff];
         for(let i=0; i<60; i++) {
-            const h = 10 + Math.random() * 30, w = 6 + Math.random() * 4;
+            const h = 10 + Math.random() * 30, w = 7 + Math.random() * 3;
             const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, w), new THREE.MeshPhongMaterial({ color: colors[Math.floor(Math.random()*colors.length)] }));
             const ang = Math.random() * Math.PI * 2, dist = 30 + Math.random() * 200;
             mesh.position.set(Math.cos(ang)*dist, h/2, Math.sin(ang)*dist);
             scene.add(mesh);
-            obstacles.push({ mesh, radius: w/2 + 1 });
+            obstacles.push({ mesh, radius: w/2 + 1.2 });
         }
 
         const areaWall = new THREE.Mesh(new THREE.CylinderGeometry(areaRadius, areaRadius, 150, 64, 1, true), new THREE.MeshBasicMaterial({ color: 0x8800ff, transparent: true, opacity: 0.3, side: THREE.DoubleSide }));
         areaWall.position.y = 75; scene.add(areaWall);
 
+        // プレイヤー設定
         const player = new THREE.Group();
         const pBody = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.5, 1.5), new THREE.MeshPhongMaterial({ color: 0xffffff }));
         pBody.position.y = 0.75; player.add(pBody);
+        // プレイヤーのスタンドも独立して管理しやすいよう構成
         const pStand = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.8, 1.8), new THREE.MeshPhongMaterial({ color: 0xff0000 }));
-        pStand.position.set(0, 0.8, -2.5); pStand.visible = false; player.add(pStand);
+        pStand.visible = false; scene.add(pStand); 
         scene.add(player); player.add(camera); camera.position.set(0, 15, 20); camera.lookAt(0, 0, -5);
 
         function createEntity() {
             const group = new THREE.Group();
             const body = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.5, 1.5), new THREE.MeshPhongMaterial({ color: 0xffff00 }));
             body.position.y = 0.75; group.add(body);
-            const stand = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.6, 1.6), new THREE.MeshPhongMaterial({ color: 0xff0000 }));
-            stand.position.set(0, 0.8, -2.5); stand.visible = false; group.add(stand);
+            
+            // スタンドはシーンに直接追加（キャラクターの子にしないことで回転の影響を排除）
+            const stand = new THREE.Mesh(new THREE.BoxGeometry(2.0, 2.0, 2.0), new THREE.MeshPhongMaterial({ color: 0xff0000, emissive: 0x330000 }));
+            stand.visible = false;
+            scene.add(stand);
+
             const ang = Math.random() * Math.PI * 2, dist = 50 + Math.random() * 180;
             group.position.set(Math.cos(ang)*dist, 0, Math.sin(ang)*dist);
             scene.add(group);
-            // wanderAngle: 索敵対象がいない時の徘徊用
-            return { group, stand, hp: 100, alive: true, id: Math.random(), attackCd: 0, facingDir: new THREE.Vector3(Math.random()-0.5, 0, Math.random()-0.5).normalize(), wanderAngle: Math.random() * Math.PI * 2 };
+
+            return { group, stand, hp: 100, alive: true, id: Math.random(), attackCd: 0, facingDir: new THREE.Vector3(1,0,0), wanderAngle: Math.random() * Math.PI * 2 };
         }
         for(let i=0; i<39; i++) entities.push(createEntity());
 
@@ -109,13 +115,14 @@
         window.addEventListener('keydown', (e) => keys[e.code] = true);
         window.addEventListener('keyup', (e) => keys[e.code] = false);
 
+        let pAttackCd = 0;
         const clock = new THREE.Clock();
         function animate() {
             requestAnimationFrame(animate);
             const delta = Math.min(clock.getDelta(), 0.1);
             if (!isGameStarted) return;
 
-            // プレイヤー移動
+            // プレイヤー操作
             const moveSpeed = charStats.speed * delta;
             if (keys['ArrowLeft']) player.rotation.y += 3 * delta;
             if (keys['ArrowRight']) player.rotation.y -= 3 * delta;
@@ -128,18 +135,21 @@
                 if(!collide) player.position.copy(nextP);
             }
 
-            // プレイヤー攻撃
-            if (keys['Space'] && (attackCooldown -= delta) <= 0) {
-                attackCooldown = 0.7; pStand.visible = true;
-                setTimeout(() => pStand.visible = false, 300);
+            // プレイヤー攻撃（向きに依存しない絶対座標攻撃）
+            pAttackCd -= delta;
+            if (keys['Space'] && pAttackCd <= 0) {
+                pAttackCd = 0.6;
+                const attackDir = new THREE.Vector3(0,0,-1).applyQuaternion(player.quaternion);
+                pStand.position.copy(player.position).add(attackDir.multiplyScalar(3));
+                pStand.position.y = 1.5;
+                pStand.visible = true;
+                setTimeout(() => pStand.visible = false, 200);
                 entities.forEach(e => {
-                    const hitPos = player.position.clone().add(new THREE.Vector3(0,0,-3.5).applyQuaternion(player.quaternion));
-                    if (e.alive && e.group.position.distanceTo(hitPos) < 4.5) e.hp -= charStats.attack;
+                    if (e.alive && e.group.position.distanceTo(pStand.position) < 4) e.hp -= charStats.attack;
                 });
             }
-            if (pStand.visible) pStand.position.set((Math.random()-0.5)*0.5, 0.8, -2.5 + (Math.random()-0.5)*0.5);
 
-            // BOT AI（索敵範囲の制限）
+            // BOT AI
             areaRadius -= delta * 0.7;
             areaWall.geometry.dispose();
             areaWall.geometry = new THREE.CylinderGeometry(areaRadius, areaRadius, 150, 64, 1, true);
@@ -147,63 +157,72 @@
             entities.forEach(e => {
                 if (!e.alive) return;
 
-                // 索敵対象を探す（範囲内のみ）
-                let target = null;
+                let targetPos = null;
                 let minDist = DETECT_RANGE;
 
-                // プレイヤーをチェック
+                // 索敵
                 const dToP = e.group.position.distanceTo(player.position);
-                if (dToP < minDist) { minDist = dToP; target = player.position; }
-
-                // 他のBOTをチェック
+                if (dToP < minDist) { minDist = dToP; targetPos = player.position; }
                 entities.forEach(other => {
                     if (other.alive && other.id !== e.id) {
                         const d = e.group.position.distanceTo(other.group.position);
-                        if (d < minDist) { minDist = d; target = other.group.position; }
+                        if (d < minDist) { minDist = d; targetPos = other.group.position; }
                     }
                 });
 
-                if (target) {
-                    // ターゲット発見：追跡
-                    const dir = new THREE.Vector3().subVectors(target, e.group.position).normalize();
+                if (targetPos) {
+                    // 追跡
+                    const dir = new THREE.Vector3().subVectors(targetPos, e.group.position).normalize();
                     e.facingDir.lerp(dir, 0.1);
-                    if (minDist > 4) e.group.position.add(e.facingDir.clone().multiplyScalar(11 * delta));
-                } else {
-                    // ターゲットなし：徘徊（エリアの中央を意識しつつ）
-                    e.wanderAngle += (Math.random() - 0.5) * 0.5;
-                    const wanderDir = new THREE.Vector3(Math.cos(e.wanderAngle), 0, Math.sin(e.wanderAngle));
-                    // エリア外に出そうなら中央へ向き直す
-                    if (e.group.position.length() > areaRadius * 0.7) {
-                        const toCenter = e.group.position.clone().negate().normalize();
-                        wanderDir.add(toCenter).normalize();
+                    if (minDist > 3.5) {
+                        let nextB = e.group.position.clone().add(e.facingDir.clone().multiplyScalar(10 * delta));
+                        let bColl = false;
+                        obstacles.forEach(o => { if(nextB.distanceTo(o.mesh.position) < o.radius) bColl = true; });
+                        if(!bColl) e.group.position.copy(nextB);
                     }
-                    e.facingDir.lerp(wanderDir, 0.05);
+
+                    // 確実にターゲットの方向にスタンドを出す修正
+                    e.attackCd -= delta;
+                    if (minDist < 6.5 && e.attackCd <= 0) {
+                        e.attackCd = 1.5;
+                        // 1. ターゲットへのベクトルを再計算
+                        const aimDir = new THREE.Vector3().subVectors(targetPos, e.group.position).normalize();
+                        // 2. スタンドを自分の位置からターゲット方向へ2.5ユニット離れた場所に配置
+                        e.stand.position.copy(e.group.position).add(aimDir.multiplyScalar(2.8));
+                        e.stand.position.y = 1.5;
+                        e.stand.visible = true;
+                        
+                        setTimeout(() => e.stand.visible = false, 400);
+
+                        // プレイヤーへのダメージ判定
+                        if (e.group.position.distanceTo(player.position) < 5) {
+                            if (playerShield > 0) playerShield -= 10; else playerHP -= 10;
+                        }
+                    }
+                } else {
+                    // 徘徊
+                    e.wanderAngle += (Math.random() - 0.5) * 0.4;
+                    const wDir = new THREE.Vector3(Math.cos(e.wanderAngle), 0, Math.sin(e.wanderAngle));
+                    if (e.group.position.length() > areaRadius * 0.8) {
+                        wDir.add(e.group.position.clone().negate().normalize()).normalize();
+                    }
+                    e.facingDir.lerp(wDir, 0.05);
                     e.group.position.add(e.facingDir.clone().multiplyScalar(6 * delta));
                 }
 
-                // 向きと攻撃
                 e.group.lookAt(e.group.position.x + e.facingDir.x, 0, e.group.position.z + e.facingDir.z);
-                e.attackCd -= delta;
-                if (target && minDist < 6 && e.attackCd <= 0) {
-                    e.attackCd = 1.5; e.stand.visible = true;
-                    setTimeout(() => e.stand.visible = false, 450);
-                    if (e.group.position.distanceTo(player.position) < 4) {
-                        if (playerShield > 0) playerShield -= 12; else playerHP -= 12;
-                    }
-                }
-                if (e.stand.visible) e.stand.position.set((Math.random()-0.5)*0.4, 0.8, -2.5 + (Math.random()-0.5)*0.4);
-
-                if (e.group.position.length() > areaRadius) e.hp -= delta * 25;
-                if (e.hp <= 0) { e.alive = false; scene.remove(e.group); }
+                if (e.group.position.length() > areaRadius) e.hp -= delta * 30;
+                if (e.hp <= 0) { e.alive = false; scene.remove(e.group); scene.remove(e.stand); }
             });
 
             // UI反映
             if (player.position.length() > areaRadius) playerHP -= delta * 15;
             document.getElementById('warning').style.display = (player.position.length() > areaRadius) ? 'block' : 'none';
-            document.getElementById('hp-fill').style.width = playerHP + "%";
+            document.getElementById('hp-fill').style.width = Math.max(0, playerHP) + "%";
+            document.getElementById('shield-fill').style.width = playerShield + "%";
             document.getElementById('survivors-count').innerText = entities.filter(e => e.alive).length + 1;
 
-            if (playerHP <= 0) { alert("Game Over"); location.reload(); }
+            if (playerHP <= 0) { alert("LOSE..."); location.reload(); }
             renderer.render(scene, camera);
         }
         animate();
