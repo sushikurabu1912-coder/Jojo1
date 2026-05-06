@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>TOFU SURVIVOR: NARROW FOV</title>
+    <title>TOFU SURVIVOR: PERFECT CUBE FIX</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', sans-serif; user-select: none; transition: filter 0.3s; }
         .time-stopped { filter: invert(100%) hue-rotate(180deg); }
@@ -36,7 +36,7 @@
     </div>
     <div id="start-screen" class="full-screen-overlay">
         <h1 style="font-size: 48px; color: #f0f;">TOFU SURVIVOR</h1>
-        <p>視点を狭めて臨場感アップ。3枚で解放、7枚で極限強化。</p>
+        <p>敵の攻撃は赤い「立方体」！3枚で解放、7枚で極限強化。</p>
         <div class="char-container">
             <div class="char-card" onclick="startGame('white')"><h3 style="color:#fff">WHITE</h3><p>無敵化</p></div>
             <div class="char-card" onclick="startGame('cyan')"><h3 style="color:#0ff">CYAN</h3><p>時飛ばし</p></div>
@@ -67,7 +67,6 @@
 
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x000005);
-        // FOVを75から60に狭めて臨場感を出し、対象を見やすくしました
         const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
@@ -133,8 +132,11 @@
             const group = new THREE.Group();
             const body = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.5, 1.5), new THREE.MeshPhongMaterial({ color: [0xffff00, 0x00ffff, 0xff00ff, 0xff8800][Math.floor(Math.random()*4)] }));
             body.position.y = 0.75; group.add(body);
-            const stand = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.5, 1.5), new THREE.MeshPhongMaterial({ color: 0xff0000, emissive: 0x330000 }));
-            stand.visible = false; scene.add(stand);
+            // 敵スタンド：本体と同じ1.5の完全な立方体
+            const stand = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.5, 1.5), new THREE.MeshPhongMaterial({ color: 0xff0000, emissive: 0x440000 }));
+            stand.visible = false; 
+            scene.add(stand);
+            
             let tx, tz, spawned = false;
             while(!spawned) {
                 const ang = Math.random()*Math.PI*2, dist = 50 + Math.random()*150;
@@ -169,10 +171,7 @@
             if (!isGameStarted || isGameOver) return;
 
             const isEvolved = collectedCards >= 7;
-            let maxUses = 0;
-            if (charStats.type === 'gold') maxUses = isEvolved ? 3 : 1;
-            if (charStats.type === 'cyan') maxUses = isEvolved ? 4 : 2;
-            if (charStats.type === 'white') maxUses = isEvolved ? 3 : 1;
+            let maxUses = (charStats.type === 'cyan') ? (isEvolved ? 4 : 2) : (isEvolved ? 3 : 1);
 
             const skillLabel = document.getElementById('skill-ui');
             if (skillCd > 0) {
@@ -211,12 +210,12 @@
                     setTimeout(() => { isInvincible = false; pBody.material.emissive.setHex(0x000000); skillCd = 0; }, dur);
                 }
                 if (charStats.type === 'cyan') {
-                    const dur = isEvolved ? (6 + Math.random()).toFixed(1) * 1000 : (3 + Math.random()).toFixed(1) * 1000;
+                    const dur = isEvolved ? 6500 : 3500;
                     skillCd = dur / 1000; isTimeSkipping = true; document.getElementById('time-skip-overlay').style.display = 'block';
                     setTimeout(() => { isTimeSkipping = false; document.getElementById('time-skip-overlay').style.display = 'none'; skillCd = 0; }, dur);
                 }
                 if (charStats.type === 'gold') {
-                    const dur = isEvolved ? (4 + Math.random() * 2).toFixed(1) * 1000 : (2 + Math.random()).toFixed(1) * 1000;
+                    const dur = isEvolved ? 5000 : 3000;
                     skillCd = dur / 1000; isTimeStopped = true; document.body.classList.add('time-stopped');
                     setTimeout(() => { isTimeStopped = false; document.body.classList.remove('time-stopped'); skillCd = 0; }, dur);
                 }
@@ -229,7 +228,7 @@
             if (pStand.visible) {
                 const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
                 pStand.position.copy(player.position).add(fwd.multiplyScalar(2.8));
-                pStand.position.y = 0.75 + (Math.random()-0.5)*0.3;
+                pStand.position.y = 0.75; // プレイヤーのスタンドも高さを固定
                 entities.forEach(e => {
                     if (e.alive && e.group.position.distanceTo(pStand.position) < 3.0) {
                         e.hp -= charStats.attack * delta * 5;
@@ -247,6 +246,7 @@
                 let curTarget = isTimeSkipping ? null : player;
                 let minDist = isTimeSkipping ? Infinity : e.group.position.distanceTo(player.position);
                 entities.forEach(other => { if (other.alive && other.id !== e.id) { const d = e.group.position.distanceTo(other.group.position); if (d < minDist) { minDist = d; curTarget = other.group; } } });
+                
                 e.target = curTarget;
                 let moveDir = new THREE.Vector3();
                 if (e.target) {
@@ -258,8 +258,8 @@
                         e.stateTimer = 1.0 + Math.random() * 2;
                     }
                     if (e.aiState === 'rush') moveDir.copy(toVec); else if (e.aiState === 'retreat') moveDir.copy(toVec).negate(); else moveDir.set(-toVec.z, 0, toVec.x).multiplyScalar(e.strafeDir);
-                    e.attackCd -= botDelta;
                     
+                    e.attackCd -= botDelta;
                     if (minDist < 6.5 && e.attackCd <= 0) { 
                         e.attackCd = 1.5; e.stand.visible = true; 
                         setTimeout(() => { if (e.stand) e.stand.visible = false; }, 400); 
@@ -268,7 +268,8 @@
                     if (e.stand.visible) {
                         const attackPos = new THREE.Vector3().copy(e.group.position).lerp(e.target.position, 0.5); 
                         e.stand.position.copy(attackPos);
-                        e.stand.position.y = 0.75 + (Math.random()-0.5)*0.2; 
+                        // 強制的に高さ(y)を0.75にして地面に埋まらせない（潰れて見えないようにする）
+                        e.stand.position.y = 0.75; 
                         
                         if (!isTimeSkipping && e.stand.position.distanceTo(player.position) < 2.5 && !isInvincible) { 
                             const dmg = charStats.attack * botDelta * 4;
