@@ -2,17 +2,18 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Tofu Survivor - Character Select</title>
+    <title>Tofu Survivor - Exclusive Ability</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: 'MS Gothic', sans-serif; }
         
         /* キャラクター選択画面 */
         #start-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 20, 0.95); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; color: white; text-align: center; }
         .char-container { display: flex; gap: 20px; margin-top: 30px; }
-        .char-card { border: 2px solid #555; padding: 20px; border-radius: 10px; cursor: pointer; transition: 0.3s; background: #111; width: 120px; }
+        .char-card { border: 2px solid #555; padding: 20px; border-radius: 10px; cursor: pointer; transition: 0.3s; background: #111; width: 130px; }
         .char-card:hover { border-color: #f0f; transform: translateY(-10px); background: #222; }
         .char-card h3 { margin: 10px 0; }
-        .char-card p { font-size: 12px; color: #aaa; }
+        .char-card p { font-size: 11px; color: #aaa; line-height: 1.4; }
+        .ability-text { color: #ff0; font-weight: bold; font-size: 10px; }
 
         /* ゲームUI */
         #ui-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 20; display: none; }
@@ -32,17 +33,17 @@
             <div class="char-card" onclick="startGame('standard')">
                 <div style="width:40px; height:40px; background:#fff; margin:auto;"></div>
                 <h3>WHITE</h3>
-                <p>バランス型<br>速度: 1.0<br>攻撃: 中</p>
+                <p>バランス型<br>速度: 普通<br>攻撃: 普通<br><span style="color:#666;">特殊能力: なし</span></p>
             </div>
             <div class="char-card" onclick="startGame('speed')">
                 <div style="width:40px; height:40px; background:#0ff; margin:auto;"></div>
                 <h3>CYAN</h3>
-                <p>速度特化<br>速度: 1.4<br>攻撃: 小</p>
+                <p>速度特化型<br>速度: 高速<br>攻撃: 低い<br><span style="color:#666;">特殊能力: なし</span></p>
             </div>
             <div class="char-card" onclick="startGame('power')">
                 <div style="width:40px; height:40px; background:#ffd700; margin:auto;"></div>
                 <h3>GOLD</h3>
-                <p>パワー型<br>速度: 0.8<br>攻撃: 大</p>
+                <p>パワー・特殊型<br>速度: 低い<br>攻撃: 高い<br><span class="ability-text">特殊能力: 時間停止(E)</span></p>
             </div>
         </div>
     </div>
@@ -52,8 +53,8 @@
         <div id="warning">⚠️AREA DAMAGE⚠️</div>
         <div id="area-ui">SURVIVORS: <span id="survivors-count">--</span><br>RADIUS: <span id="area-radius">--</span></div>
         <div id="status-ui">
-            <div id="at-label" style="color:#f00; font-weight:bold;">ATTACK: READY</div>
-            <div id="ts-label" style="color:#ff0; font-weight:bold;">TIME STOP: READY</div>
+            <div id="at-label" style="color:#f00; font-weight:bold;">ATTACK: READY (SPACE)</div>
+            <div id="ts-label" style="color:#ff0; font-weight:bold; display:none;">TIME STOP: READY (E)</div>
             HP <div class="bar-container"><div id="hp-fill"></div></div>
         </div>
     </div>
@@ -62,7 +63,7 @@
         import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.module.min.js';
 
         let isGameStarted = false;
-        let charStats = { speed: 22, attack: 40, color: 0xffffff };
+        let charStats = { speed: 22, attack: 40, color: 0xffffff, canStop: false };
 
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x000005);
@@ -99,7 +100,6 @@
         areaWall.position.y = 60;
         scene.add(areaWall);
 
-        // プレイヤー (初期はダミー)
         const player = new THREE.Group();
         const pBody = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.5, 1.5), new THREE.MeshPhongMaterial({ color: 0xffffff }));
         pBody.position.y = 0.75;
@@ -116,14 +116,22 @@
         let playerHP = 100, isTimeStopped = false, timeStopCooldown = 0, attackCooldown = 0;
         const enemies = [], keys = {};
 
-        // キャラクター選択後のゲーム開始処理
         window.startGame = (type) => {
-            if (type === 'speed') charStats = { speed: 32, attack: 25, color: 0x00ffff };
-            if (type === 'power') charStats = { speed: 17, attack: 80, color: 0xffd700 };
+            if (type === 'standard') charStats = { speed: 22, attack: 40, color: 0xffffff, canStop: false };
+            if (type === 'speed') charStats = { speed: 32, attack: 25, color: 0x00ffff, canStop: false };
+            if (type === 'power') charStats = { speed: 17, attack: 80, color: 0xffd700, canStop: true };
             
             pBody.material.color.setHex(charStats.color);
             document.getElementById('start-screen').style.display = 'none';
             document.getElementById('ui-container').style.display = 'block';
+            
+            // GOLD（canStop持ち）の場合だけ時停止UIを出す
+            if (charStats.canStop) {
+                document.getElementById('ts-label').style.display = 'block';
+            } else {
+                document.getElementById('ts-label').style.display = 'none';
+            }
+            
             isGameStarted = true;
         };
 
@@ -146,7 +154,9 @@
 
         window.addEventListener('keydown', (e) => {
             keys[e.code] = true;
-            if (e.code === 'KeyE' && timeStopCooldown <= 0 && !isTimeStopped && isGameStarted) {
+            
+            // 時間停止の実行条件：GOLDであること(canStop)
+            if (e.code === 'KeyE' && charStats.canStop && timeStopCooldown <= 0 && !isTimeStopped && isGameStarted) {
                 isTimeStopped = true;
                 document.getElementById('time-stop-overlay').style.display = 'block';
                 setTimeout(() => { 
@@ -217,7 +227,12 @@
             }
 
             document.getElementById('hp-fill').style.width = Math.max(0, playerHP) + "%";
-            document.getElementById('ts-label').innerText = timeStopCooldown > 0 ? `TS CD: ${Math.ceil(timeStopCooldown)}` : "TIME STOP: READY (E)";
+            
+            // 時停止UIの更新（GOLDの時だけ）
+            if (charStats.canStop) {
+                document.getElementById('ts-label').innerText = timeStopCooldown > 0 ? `TS CD: ${Math.ceil(timeStopCooldown)}` : "TIME STOP: READY (E)";
+            }
+            
             document.getElementById('at-label').innerText = attackCooldown > 0 ? `AT CD: ${attackCooldown.toFixed(1)}` : "ATTACK: READY (SPACE)";
             document.getElementById('area-radius').innerText = Math.floor(areaRadius);
             document.getElementById('survivors-count').innerText = enemies.filter(e => e.alive).length + 1;
