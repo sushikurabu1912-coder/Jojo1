@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>TOFU SURVIVOR: ULTIMATE AI & COLLISION</title>
+    <title>TOFU SURVIVOR: PRECISION STRIKE</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', sans-serif; user-select: none; transition: filter 0.3s; }
         .time-stopped { filter: invert(100%) hue-rotate(180deg); }
@@ -24,7 +24,7 @@
 
     <div id="start-screen">
         <h1 style="font-size: 48px; color: #f0f;">TOFU SURVIVOR</h1>
-        <p>最終調整：ビルの完全物理判定 ＆ 戦闘AIの高度化</p>
+        <p>ATTACK FIX: 敵のスタンドが正確に正面を攻撃するように修正</p>
         <div class="char-container">
             <div class="char-card" onclick="startGame('white')"><h3 style="color:#fff">WHITE</h3><p>無敵化</p></div>
             <div class="char-card" onclick="startGame('cyan')"><h3 style="color:#0ff">CYAN</h3><p>時飛ばし(6s)</p></div>
@@ -127,7 +127,7 @@
                 if (!obstacles.some(o => new THREE.Vector2(tx, tz).distanceTo(o.pos) < o.radius+4)) spawned = true;
             }
             group.position.set(tx, 0, tz); scene.add(group);
-            return { group, stand, hp: 100, alive: true, id: Math.random(), attackCd: 0, aiState: 'idle', stateTimer: 0, strafeDir: Math.random() > 0.5 ? 1 : -1, targetId: null };
+            return { group, stand, hp: 200, alive: true, id: Math.random(), attackCd: 0, aiState: 'idle', stateTimer: 0, strafeDir: Math.random() > 0.5 ? 1 : -1, target: null };
         }
         for(let i=0; i<39; i++) entities.push(createEntity());
 
@@ -174,10 +174,10 @@
             pAttackCd -= delta;
             if (keys['Space'] && pAttackCd <= 0) { pAttackCd = 0.5; pStand.visible = true; setTimeout(() => pStand.visible = false, 200); }
             if (pStand.visible) {
-                const offset = new THREE.Vector3(0, 0, -3.2).applyQuaternion(player.quaternion);
-                pStand.position.copy(player.position).add(offset);
+                const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
+                pStand.position.copy(player.position).add(fwd.multiplyScalar(3.2));
                 pStand.position.x += (Math.random()-0.5)*0.9; pStand.position.y = 1.5 + (Math.random()-0.5)*0.9; pStand.position.z += (Math.random()-0.5)*0.9;
-                entities.forEach(e => { if (e.alive && e.group.position.distanceTo(pStand.position) < 5.2) e.hp -= charStats.attack * delta * 12; });
+                entities.forEach(e => { if (e.alive && e.group.position.distanceTo(pStand.position) < 5.5) e.hp -= charStats.attack * delta * 12; });
             }
 
             const botDelta = isTimeStopped ? 0 : (isTimeSkipping ? delta * 0.3 : delta);
@@ -187,14 +187,15 @@
 
             entities.forEach(e => {
                 if (!e.alive || isTimeStopped) return;
-                let target = player;
+                
+                let curTarget = player;
                 let minDist = e.group.position.distanceTo(player.position);
-                entities.forEach(other => { if (other.alive && other.id !== e.id) { const d = e.group.position.distanceTo(other.group.position); if (d < minDist) { minDist = d; target = other.group; } } });
+                entities.forEach(other => { if (other.alive && other.id !== e.id) { const d = e.group.position.distanceTo(other.group.position); if (d < minDist) { minDist = d; curTarget = other.group; } } });
+                e.target = curTarget;
 
                 let moveDir = new THREE.Vector3();
-                const toTarget = new THREE.Vector3().subVectors(target.position, e.group.position).normalize();
+                const toTarget = new THREE.Vector3().subVectors(e.target.position, e.group.position).normalize();
                 
-                // Advanced Combat AI
                 e.stateTimer -= botDelta;
                 if (e.stateTimer <= 0) {
                     const r = Math.random();
@@ -211,22 +212,26 @@
 
                 e.attackCd -= botDelta;
                 if (minDist < 8.5 && e.attackCd <= 0) { 
-                    e.attackCd = 2.0; e.stand.visible = true; e.targetId = (target === player) ? "player" : target.uuid;
-                    e.aiState = 'retreat'; e.stateTimer = 1.0; // Hit and away
+                    e.attackCd = 2.0; e.stand.visible = true;
+                    e.aiState = 'retreat'; e.stateTimer = 0.8; 
                     setTimeout(() => e.stand.visible = false, 400); 
                 }
 
-                if (e.stand.visible) {
-                    let currentTargetObj = (e.targetId === "player") ? player : entities.find(v => v.group.uuid === e.targetId)?.group;
-                    if (currentTargetObj) {
-                        const preciseDir = new THREE.Vector3().subVectors(currentTargetObj.position, e.group.position).normalize();
-                        e.group.lookAt(e.group.position.x + preciseDir.x, 0, e.group.position.z + preciseDir.z);
-                    }
-                    const fwd = new THREE.Vector3(0,0,-1).applyQuaternion(e.group.quaternion);
+                if (e.stand.visible && e.target) {
+                    // スタンド攻撃の向き修正：常にターゲットの現在位置を向く
+                    const lookVec = new THREE.Vector3().subVectors(e.target.position, e.group.position).normalize();
+                    e.group.lookAt(e.group.position.x + lookVec.x, 0, e.group.position.z + lookVec.z);
+                    
+                    // 正面方向に攻撃判定を出す
+                    const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(e.group.quaternion);
                     e.stand.position.copy(e.group.position).add(fwd.multiplyScalar(3.2));
-                    e.stand.position.x += (Math.random()-0.5)*0.8; e.stand.position.y = 1.5 + (Math.random()-0.5)*0.8; e.stand.position.z += (Math.random()-0.5)*0.8;
-                    if (e.stand.position.distanceTo(player.position) < 5.2 && !isInvincible) { if (playerShield > 0) playerShield -= 25*botDelta; else playerHP -= 25*botDelta; }
-                    entities.forEach(v => { if (v.alive && v.id !== e.id && e.stand.position.distanceTo(v.group.position) < 5.2) v.hp -= 10*botDelta; });
+                    
+                    // ダメージ処理
+                    if (e.stand.position.distanceTo(player.position) < 5.2 && !isInvincible) { 
+                        const dmg = charStats.attack * botDelta * 10;
+                        if (playerShield > 0) playerShield -= dmg; else playerHP -= dmg; 
+                    }
+                    entities.forEach(v => { if (v.alive && v.id !== e.id && e.stand.position.distanceTo(v.group.position) < 5.2) v.hp -= charStats.attack * botDelta * 8; });
                 }
 
                 if (e.group.position.length() > areaRadius * 0.8) moveDir.add(e.group.position.clone().negate().normalize()).normalize();
