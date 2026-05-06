@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>TOFU SURVIVOR: THE ULTIMATE</title>
+    <title>TOFU SURVIVOR: THE ULTIMATE DECISION</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', sans-serif; user-select: none; }
         #start-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 30, 0.95); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; color: white; text-align: center; }
@@ -26,7 +26,7 @@
 
     <div id="start-screen">
         <h1 style="font-size: 48px; color: #f0f; text-shadow: 0 0 20px #f0f;">TOFU SURVIVOR</h1>
-        <p style="color: #aaa;">高知能AIを排除し、最後の1つの豆腐になれ。</p>
+        <p style="color: #aaa;">最終調整版：敵の自滅を抑制。スタンドの衝撃を体感せよ。</p>
         <div class="char-container">
             <div class="char-card" onclick="startGame('white')"><h3 style="color:#fff">WHITE</h3><p>無敵化<br>[E] 3秒間</p></div>
             <div class="char-card" onclick="startGame('cyan')"><h3 style="color:#0ff">CYAN</h3><p>時飛ばし<br>[E] 2.5秒間</p></div>
@@ -45,7 +45,7 @@
             SHIELD <div class="bar-container"><div id="shield-fill"></div></div>
             HP <div class="bar-container"><div id="hp-fill"></div></div>
         </div>
-        <div id="controls-hint">WASD: MOVE | ARROWS: ROTATE | SPACE: STAND ATTACK</div>
+        <div id="controls-hint">WASD: MOVE | ARROWS: ROTATE | SPACE: STAND ATTACK (Shake!)</div>
     </div>
 
     <script type="module">
@@ -74,7 +74,7 @@
         const floor = new THREE.Mesh(new THREE.PlaneGeometry(1000, 1000), new THREE.MeshPhongMaterial({ color: 0x111111 }));
         floor.rotation.x = -Math.PI / 2; scene.add(floor);
 
-        // --- Obstacles (Buildings with fixed collision) ---
+        // --- Obstacles (Buildings with strict collision) ---
         const colors = [0xff4444, 0x44ff44, 0x4444ff, 0xffff44, 0xff44ff, 0x44ffff];
         const gridSize = 40, range = 240;
         for(let x = -range; x <= range; x += gridSize) {
@@ -86,7 +86,7 @@
                 const posZ = z + (Math.random() - 0.5) * gridSize * 0.8;
                 mesh.position.set(posX, h/2, posZ);
                 scene.add(mesh);
-                obstacles.push({ mesh, radius: w/2 + 1.2 }); // Collision radius
+                obstacles.push({ mesh, radius: w/2 + 1.2 });
             }
         }
 
@@ -120,7 +120,7 @@
         scene.add(player); 
         player.add(camera); camera.position.set(0, 15, 20); camera.lookAt(0, 0, -5);
 
-        // --- Entities (Elite AI) ---
+        // --- Entities (Elite AI - Long Life Adjust) ---
         function createEntity() {
             const group = new THREE.Group();
             const bodyColor = [0xffff00, 0x00ffff, 0xff00ff, 0xff8800][Math.floor(Math.random()*4)];
@@ -138,15 +138,13 @@
             scene.add(group);
             return { 
                 group, stand, hp: 100, alive: true, id: Math.random(), attackCd: 0, 
-                facingDir: new THREE.Vector3(1,0,0), wanderAngle: Math.random() * Math.PI * 2,
+                wanderAngle: Math.random() * Math.PI * 2,
                 stateTimer: 0, strafeDir: Math.random() > 0.5 ? 1 : -1
             };
         }
         for(let i=0; i<39; i++) entities.push(createEntity());
 
-        // --- Functions ---
         window.startGame = (type) => {
-            charStats.type = type;
             if (type === 'white') charStats = { speed: 25, attack: 55, color: 0xffffff, type };
             if (type === 'cyan') charStats = { speed: 32, attack: 40, color: 0x00ffff, type };
             if (type === 'gold') charStats = { speed: 20, attack: 95, color: 0xffd700, type };
@@ -167,32 +165,20 @@
             const delta = Math.min(clock.getDelta(), 0.1);
             if (!isGameStarted) return;
 
-            // Skill Cooldown UI
-            if (skillCd > 0) {
-                skillCd -= delta;
-                document.getElementById('skill-ui').innerText = `RECHARGING: ${Math.ceil(skillCd)}`;
-                document.getElementById('skill-ui').style.color = "#888";
-            } else {
-                document.getElementById('skill-ui').innerText = "SKILL READY [E]";
-                document.getElementById('skill-ui').style.color = "#ff0";
-            }
+            if (skillCd > 0) skillCd -= delta;
 
             // --- Player Movement & Collision ---
             const pSpeed = charStats.speed * delta;
             if (keys['ArrowLeft']) player.rotation.y += 3.6 * delta;
             if (keys['ArrowRight']) player.rotation.y -= 3.6 * delta;
-            
-            const mx = (keys['KeyD']?1:0) - (keys['KeyA']?1:0);
-            const mz = (keys['KeyS']?1:0) - (keys['KeyW']?1:0);
+            const mx = (keys['KeyD']?1:0) - (keys['KeyA']?1:0), mz = (keys['KeyS']?1:0) - (keys['KeyW']?1:0);
             if (mx !== 0 || mz !== 0) {
                 const moveVec = new THREE.Vector3(mx, 0, mz).normalize().multiplyScalar(pSpeed).applyQuaternion(player.quaternion);
                 let nextP = player.position.clone().add(moveVec);
-                if (!obstacles.some(o => nextP.distanceTo(o.mesh.position) < o.radius)) {
-                    player.position.copy(nextP);
-                }
+                if (!obstacles.some(o => nextP.distanceTo(o.mesh.position) < o.radius)) player.position.copy(nextP);
             }
 
-            // --- Skill Execution ---
+            // --- Skill Logic ---
             if (keys['KeyE'] && skillCd <= 0) {
                 skillCd = 12;
                 if (charStats.type === 'white') {
@@ -207,7 +193,7 @@
                 }
             }
 
-            // --- Player Attack with SHAKE ---
+            // --- Player Attack with IMPACT SHAKE ---
             pAttackCd -= delta;
             if (keys['Space'] && pAttackCd <= 0) {
                 pAttackCd = 0.5;
@@ -222,21 +208,20 @@
 
             if (pStand.visible) {
                 pStand.position.copy(pStand.userData.basePos);
-                pStand.position.x += (Math.random() - 0.5) * 0.9;
-                pStand.position.y = 1.5 + (Math.random() - 0.5) * 0.9;
-                pStand.position.z += (Math.random() - 0.5) * 0.9;
+                pStand.position.x += (Math.random() - 0.5) * 0.95;
+                pStand.position.y = 1.5 + (Math.random() - 0.5) * 0.95;
+                pStand.position.z += (Math.random() - 0.5) * 0.95;
             }
 
-            // --- Bot & Area Update ---
+            // --- Bot AI (Battle Pacing Adjustments) ---
             const botDelta = isTimeStopped ? 0 : (isTimeSkipping ? delta * 0.3 : delta);
-            areaRadius -= botDelta * 0.85;
+            areaRadius -= botDelta * 0.75;
             areaWall.geometry.dispose();
             areaWall.geometry = new THREE.CylinderGeometry(areaRadius, areaRadius, 150, 64, 1, true);
 
             entities.forEach(e => {
                 if (!e.alive || isTimeStopped) return;
 
-                // AI Perception
                 let target = player;
                 let minDist = e.group.position.distanceTo(player.position);
                 entities.forEach(other => {
@@ -249,26 +234,30 @@
                 let moveDir = new THREE.Vector3();
                 if (minDist < 55) {
                     const toTarget = new THREE.Vector3().subVectors(target.position, e.group.position).normalize();
-                    // Advanced Positioning (Kiting/Strafing)
                     if (minDist > 8.5) moveDir.copy(toTarget);
                     else if (minDist < 5.0) moveDir.copy(toTarget).negate();
-                    
-                    const sideDir = new THREE.Vector3(-toTarget.z, 0, toTarget.x).multiplyScalar(e.strafeDir);
-                    moveDir.add(sideDir.multiplyScalar(0.9)).normalize();
+                    moveDir.add(new THREE.Vector3(-toTarget.z, 0, toTarget.x).multiplyScalar(e.strafeDir * 0.9)).normalize();
                     
                     e.stateTimer -= botDelta;
-                    if (e.stateTimer <= 0) { e.strafeDir *= -1; e.stateTimer = 1 + Math.random() * 2; }
+                    if (e.stateTimer <= 0) { e.strafeDir *= -1; e.stateTimer = 2 + Math.random() * 2; }
 
-                    // Attack logic
                     e.attackCd -= botDelta;
                     if (minDist < 8.0 && e.attackCd <= 0) {
-                        e.attackCd = 1.4;
+                        e.attackCd = 2.0 + Math.random(); // Longer cooldown for bots
                         e.stand.userData.basePos = e.group.position.clone().add(toTarget.multiplyScalar(3.2));
                         e.stand.visible = true;
                         setTimeout(() => e.stand.visible = false, 350);
+                        
+                        // Impact on Player
                         if (e.stand.userData.basePos.distanceTo(player.position) < 5.2 && !isInvincible) {
                             if (playerShield > 0) playerShield -= 15; else playerHP -= 15;
                         }
+                        // Impact on other Bots (Reduced Damage to keep survivors alive)
+                        entities.forEach(v => {
+                            if (v.alive && v.id !== e.id && e.stand.userData.basePos.distanceTo(v.group.position) < 5.2) {
+                                v.hp -= 4; // Low damage for bot-vs-bot
+                            }
+                        });
                     }
                 } else {
                     e.wanderAngle += (Math.random() - 0.5) * 0.3;
@@ -283,23 +272,17 @@
                     e.stand.position.z += (Math.random() - 0.5) * 0.7;
                 }
 
-                // Area awareness
-                if (e.group.position.length() > areaRadius * 0.75) {
-                    moveDir.add(e.group.position.clone().negate().normalize().multiplyScalar(1.5)).normalize();
-                }
-
-                // Execution & Building Collision
-                const nextB = e.group.position.clone().add(moveDir.multiplyScalar(14 * botDelta));
-                if (!obstacles.some(o => nextB.distanceTo(o.mesh.position) < o.radius)) {
-                    e.group.position.copy(nextB);
-                }
+                if (e.group.position.length() > areaRadius * 0.75) moveDir.add(e.group.position.clone().negate().normalize().multiplyScalar(1.5)).normalize();
+                
+                const nextB = e.group.position.clone().add(moveDir.multiplyScalar(13 * botDelta));
+                if (!obstacles.some(o => nextB.distanceTo(o.mesh.position) < o.radius)) e.group.position.copy(nextB);
                 
                 if (moveDir.length() > 0.1) e.group.lookAt(e.group.position.x + moveDir.x, 0, e.group.position.z + moveDir.z);
-                if (e.group.position.length() > areaRadius) e.hp -= botDelta * 45;
+                if (e.group.position.length() > areaRadius) e.hp -= botDelta * 30; // Mild area damage for bots
                 if (e.hp <= 0) { e.alive = false; scene.remove(e.group); scene.remove(e.stand); }
             });
 
-            // --- Items & UI ---
+            // --- UI & Items ---
             items.forEach((it, idx) => {
                 if (player.position.distanceTo(it.mesh.position) < 2.5) {
                     if (it.type === 'hp') playerHP = Math.min(100, playerHP + 40);
@@ -315,16 +298,11 @@
             document.getElementById('survivors-count').innerText = entities.filter(e => e.alive).length + 1;
             document.getElementById('area-radius').innerText = Math.floor(areaRadius);
 
-            if (playerHP <= 0) { 
-                alert("GAME OVER\nRANK: " + (entities.filter(e => e.alive).length + 1)); 
-                location.reload(); 
-            }
-            
+            if (playerHP <= 0) { alert("RANK: " + (entities.filter(e => e.alive).length + 1)); location.reload(); }
             renderer.render(scene, camera);
         }
         animate();
 
-        // Handle Resize
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
