@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Tofu Survivor - Definitive Edition</title>
+    <title>Tofu Survivor - Wall Collision Fixed</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: 'MS Gothic', sans-serif; }
         #start-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 25, 0.95); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; color: white; text-align: center; }
@@ -22,8 +22,8 @@
 <body>
 
     <div id="start-screen">
-        <h1 style="font-size: 32px; color: #f0f;">TOFU SURVIVOR: COMPLETE</h1>
-        <p>すべての能力、すべての修正がここに。生存率1%の戦場へ。</p>
+        <h1 style="font-size: 32px; color: #f0f;">TOFU SURVIVOR: SOLID WALLS</h1>
+        <p>当たり判定を修正。壁を使い、敵の攻撃を凌げ。</p>
         <div class="char-container">
             <div class="char-card" onclick="startGame('white')"><h3>WHITE</h3><p>無敵(E)</p></div>
             <div class="char-card" onclick="startGame('cyan')"><h3>CYAN</h3><p>時飛ばし(E)</p></div>
@@ -64,7 +64,7 @@
         const floor = new THREE.Mesh(new THREE.PlaneGeometry(1000, 1000), new THREE.MeshPhongMaterial({ color: 0x111111 }));
         floor.rotation.x = -Math.PI / 2; scene.add(floor);
 
-        // ビル群配置 (120棟)
+        // ビル群配置 (120棟・均等配置)
         const colors = [0xff4444, 0x44ff44, 0x4444ff, 0xffff44, 0xff44ff, 0x44ffff];
         const gridSize = 40, range = 240;
         for(let x = -range; x <= range; x += gridSize) {
@@ -146,7 +146,6 @@
             const delta = Math.min(clock.getDelta(), 0.1);
             if (!isGameStarted) return;
 
-            // スキルタイマー
             if (skillCd > 0) {
                 skillCd -= delta;
                 document.getElementById('skill-ui').innerText = `RECHARGING: ${Math.ceil(skillCd)}`;
@@ -154,7 +153,7 @@
                 document.getElementById('skill-ui').innerText = "READY [E]";
             }
 
-            // プレイヤー移動 (時間停止中でも動ける)
+            // プレイヤー移動（当たり判定あり）
             const moveSpeed = charStats.speed * delta;
             if (keys['ArrowLeft']) player.rotation.y += 3.2 * delta;
             if (keys['ArrowRight']) player.rotation.y -= 3.2 * delta;
@@ -162,10 +161,15 @@
             if (mx !== 0 || mz !== 0) {
                 const moveVec = new THREE.Vector3(mx, 0, mz).normalize().multiplyScalar(moveSpeed).applyQuaternion(player.quaternion);
                 let nextP = player.position.clone().add(moveVec);
-                if (!obstacles.some(o => nextP.distanceTo(o.mesh.position) < o.radius)) player.position.copy(nextP);
+                // ビルとの当たり判定
+                let collide = false;
+                for(let o of obstacles) {
+                    if (nextP.distanceTo(o.mesh.position) < o.radius) { collide = true; break; }
+                }
+                if (!collide) player.position.copy(nextP);
             }
 
-            // スキル発動
+            // スキル
             if (keys['KeyE'] && skillCd <= 0) {
                 skillCd = 12;
                 if (charStats.type === 'white') {
@@ -182,7 +186,7 @@
                 }
             }
 
-            // アイテム取得
+            // アイテム
             items.forEach((item, index) => {
                 if (player.position.distanceTo(item.mesh.position) < 2) {
                     if (item.type === 'hp') playerHP = Math.min(100, playerHP + 30);
@@ -203,17 +207,17 @@
                 entities.forEach(e => {
                     if (e.alive && e.group.position.distanceTo(pStand.position) < 4.8) {
                         e.hp -= charStats.attack;
-                        e.hateTarget = player; // プレイヤーを狙うように
+                        e.hateTarget = player;
                     }
                 });
             }
 
-            // BOT更新
             const botDelta = isTimeStopped ? 0 : (isTimeSkipping ? delta * 0.3 : delta);
             areaRadius -= botDelta * 0.75;
             areaWall.geometry.dispose();
             areaWall.geometry = new THREE.CylinderGeometry(areaRadius, areaRadius, 150, 64, 1, true);
 
+            // BOT更新
             entities.forEach(e => {
                 if (!e.alive || isTimeStopped) return;
 
@@ -235,7 +239,11 @@
                     e.facingDir.lerp(dir, 0.12);
                     if (minDist > 3.5) {
                         let nextB = e.group.position.clone().add(e.facingDir.clone().multiplyScalar(10 * botDelta));
-                        if (!obstacles.some(o => nextB.distanceTo(o.mesh.position) < o.radius)) e.group.position.copy(nextB);
+                        let bCollide = false;
+                        for(let o of obstacles) {
+                            if (nextB.distanceTo(o.mesh.position) < o.radius) { bCollide = true; break; }
+                        }
+                        if (!bCollide) e.group.position.copy(nextB);
                     }
                     e.attackCd -= botDelta;
                     if (minDist < 7.0 && e.attackCd <= 0) {
@@ -257,14 +265,17 @@
                     if (e.group.position.length() > areaRadius * 0.8) wDir.add(e.group.position.clone().negate().normalize()).normalize();
                     e.facingDir.lerp(wDir, 0.05);
                     let nextW = e.group.position.clone().add(e.facingDir.clone().multiplyScalar(6 * botDelta));
-                    if (!obstacles.some(o => nextW.distanceTo(o.mesh.position) < o.radius)) e.group.position.copy(nextW);
+                    let wCollide = false;
+                    for(let o of obstacles) {
+                        if (nextW.distanceTo(o.mesh.position) < o.radius) { wCollide = true; break; }
+                    }
+                    if (!wCollide) e.group.position.copy(nextW);
                 }
                 e.group.lookAt(e.group.position.x + e.facingDir.x, 0, e.group.position.z + e.facingDir.z);
                 if (e.group.position.length() > areaRadius) e.hp -= botDelta * 30;
                 if (e.hp <= 0) { e.alive = false; scene.remove(e.group); scene.remove(e.stand); }
             });
 
-            // UI更新
             if (player.position.length() > areaRadius) playerHP -= delta * 15;
             document.getElementById('warning').style.display = (player.position.length() > areaRadius) ? 'block' : 'none';
             document.getElementById('hp-fill').style.width = Math.max(0, playerHP) + "%";
