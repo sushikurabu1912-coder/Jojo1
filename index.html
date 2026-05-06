@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>TOFU SURVIVOR: VICTORY EDITION</title>
+    <title>TOFU SURVIVOR: SHAKE EDITION</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', sans-serif; user-select: none; transition: filter 0.3s; }
         .time-stopped { filter: invert(100%) hue-rotate(180deg); }
@@ -19,13 +19,7 @@
         #shield-fill { width: 0%; height: 100%; background: linear-gradient(90deg, #0055ff, #00aaff); transition: width 0.2s; }
         #skill-ui { color: #ff0; font-weight: bold; font-size: 18px; margin-bottom: 10px; text-transform: uppercase; }
         #warning { position: absolute; top: 35%; left: 50%; transform: translateX(-50%); color: #ff0044; font-size: 48px; font-weight: bold; display: none; }
-        
-        /* 勝利メッセージ用スタイル */
-        #victory-message {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            color: #fff; font-size: 64px; font-weight: bold; text-shadow: 0 0 20px #f0f, 0 0 40px #0ff;
-            display: none; z-index: 200; text-align: center; pointer-events: auto;
-        }
+        #victory-message { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #fff; font-size: 64px; font-weight: bold; text-shadow: 0 0 20px #f0f, 0 0 40px #0ff; display: none; z-index: 200; text-align: center; pointer-events: auto; }
     </style>
 </head>
 <body>
@@ -34,7 +28,7 @@
 
     <div id="start-screen">
         <h1 style="font-size: 48px; color: #f0f;">TOFU SURVIVOR</h1>
-        <p>勝利判定の追加：最後の一人になればクリアです</p>
+        <p>カメラシェイクの実装：攻撃時のインパクトを強化しました</p>
         <div class="char-container">
             <div class="char-card" onclick="startGame('white')"><h3 style="color:#fff">WHITE</h3><p>無敵化</p></div>
             <div class="char-card" onclick="startGame('cyan')"><h3 style="color:#0ff">CYAN</h3><p>時飛ばし(6s)</p></div>
@@ -61,6 +55,10 @@
         let isInvincible = false, isTimeStopped = false, isTimeSkipping = false;
         let skillCd = 0;
         const entities = [], obstacles = [], items = [], keys = {};
+
+        // カメラシェイク用の変数
+        let pCameraShakeAmount = 0;
+        const P_CAMERA_BASE_POS = new THREE.Vector3(0, 15, 20); // カメラの基本位置
 
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x000005);
@@ -122,7 +120,9 @@
         pBody.position.y = 0.75; player.add(pBody);
         const pStand = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.5, 1.5), new THREE.MeshPhongMaterial({ color: 0xff0000, transparent: true, opacity: 0.8, emissive: 0x440000 }));
         pStand.visible = false; scene.add(pStand); 
-        scene.add(player); player.add(camera); camera.position.set(0, 15, 20); camera.lookAt(0, 0, -5);
+        scene.add(player); player.add(camera);
+        camera.position.copy(P_CAMERA_BASE_POS); // 初期位置を設定
+        camera.lookAt(0, 0, -5);
 
         function createEntity() {
             const group = new THREE.Group();
@@ -176,6 +176,18 @@
             }
             checkBuildingCollision(player.position, 0.8);
 
+            // カメラシェイクの処理
+            if (pCameraShakeAmount > 0) {
+                camera.position.x = P_CAMERA_BASE_POS.x + (Math.random() - 0.5) * pCameraShakeAmount;
+                camera.position.y = P_CAMERA_BASE_POS.y + (Math.random() - 0.5) * pCameraShakeAmount;
+                // z軸の振動は酔いやすいので控えめに
+                camera.position.z = P_CAMERA_BASE_POS.z + (Math.random() - 0.5) * (pCameraShakeAmount * 0.2);
+                
+                pCameraShakeAmount -= delta * 3.0; // 振動を収束させる
+            } else {
+                camera.position.copy(P_CAMERA_BASE_POS); // 振動が終わったら元に戻す
+            }
+
             if (keys['KeyE'] && skillCd <= 0) {
                 skillCd = 12;
                 if (charStats.type === 'white') { isInvincible = true; pBody.material.emissive.setHex(0xffffff); setTimeout(() => { isInvincible = false; pBody.material.emissive.setHex(0x000000); }, 3000); }
@@ -191,7 +203,11 @@
             }
 
             pAttackCd -= delta;
-            if (keys['Space'] && pAttackCd <= 0) { pAttackCd = 0.5; pStand.visible = true; setTimeout(() => pStand.visible = false, 200); }
+            if (keys['Space'] && pAttackCd <= 0) { 
+                pAttackCd = 0.5; pStand.visible = true; 
+                pCameraShakeAmount = 0.8; // 【追加】攻撃時にカメラシェイクを設定
+                setTimeout(() => pStand.visible = false, 200); 
+            }
             
             if (pStand.visible) {
                 const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
@@ -287,7 +303,6 @@
             document.getElementById('area-radius').innerText = Math.floor(areaRadius);
             document.getElementById('warning').style.display = (player.position.length() > areaRadius) ? 'block' : 'none';
 
-            // 勝利判定
             if (survivorCount === 1 && playerHP > 0) {
                 isGameOver = true;
                 document.getElementById('victory-message').style.display = 'block';
