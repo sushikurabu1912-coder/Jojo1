@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>TOFU SURVIVOR: FIXED STAND BOX</title>
+    <title>TOFU SURVIVOR: NARROW FOV</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', sans-serif; user-select: none; transition: filter 0.3s; }
         .time-stopped { filter: invert(100%) hue-rotate(180deg); }
@@ -36,7 +36,7 @@
     </div>
     <div id="start-screen" class="full-screen-overlay">
         <h1 style="font-size: 48px; color: #f0f;">TOFU SURVIVOR</h1>
-        <p>3枚で解放、7枚で極限強化。敵の赤い「立方体」を叩け！</p>
+        <p>視点を狭めて臨場感アップ。3枚で解放、7枚で極限強化。</p>
         <div class="char-container">
             <div class="char-card" onclick="startGame('white')"><h3 style="color:#fff">WHITE</h3><p>無敵化</p></div>
             <div class="char-card" onclick="startGame('cyan')"><h3 style="color:#0ff">CYAN</h3><p>時飛ばし</p></div>
@@ -67,7 +67,8 @@
 
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x000005);
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        // FOVを75から60に狭めて臨場感を出し、対象を見やすくしました
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
@@ -132,7 +133,6 @@
             const group = new THREE.Group();
             const body = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.5, 1.5), new THREE.MeshPhongMaterial({ color: [0xffff00, 0x00ffff, 0xff00ff, 0xff8800][Math.floor(Math.random()*4)] }));
             body.position.y = 0.75; group.add(body);
-            // 固定された1.5の立方体ジオメトリ
             const stand = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.5, 1.5), new THREE.MeshPhongMaterial({ color: 0xff0000, emissive: 0x330000 }));
             stand.visible = false; scene.add(stand);
             let tx, tz, spawned = false;
@@ -229,7 +229,7 @@
             if (pStand.visible) {
                 const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
                 pStand.position.copy(player.position).add(fwd.multiplyScalar(2.8));
-                pStand.position.y = 0.75 + (Math.random()-0.5)*0.3; // 地面に埋まらないよう調整
+                pStand.position.y = 0.75 + (Math.random()-0.5)*0.3;
                 entities.forEach(e => {
                     if (e.alive && e.group.position.distanceTo(pStand.position) < 3.0) {
                         e.hp -= charStats.attack * delta * 5;
@@ -260,17 +260,14 @@
                     if (e.aiState === 'rush') moveDir.copy(toVec); else if (e.aiState === 'retreat') moveDir.copy(toVec).negate(); else moveDir.set(-toVec.z, 0, toVec.x).multiplyScalar(e.strafeDir);
                     e.attackCd -= botDelta;
                     
-                    // スタンド表示管理
                     if (minDist < 6.5 && e.attackCd <= 0) { 
                         e.attackCd = 1.5; e.stand.visible = true; 
-                        // 400ms後に隠す
                         setTimeout(() => { if (e.stand) e.stand.visible = false; }, 400); 
                     }
                     
                     if (e.stand.visible) {
                         const attackPos = new THREE.Vector3().copy(e.group.position).lerp(e.target.position, 0.5); 
                         e.stand.position.copy(attackPos);
-                        // 立方体の中心高さを0.75に固定し、埋まらないようにする
                         e.stand.position.y = 0.75 + (Math.random()-0.5)*0.2; 
                         
                         if (!isTimeSkipping && e.stand.position.distanceTo(player.position) < 2.5 && !isInvincible) { 
