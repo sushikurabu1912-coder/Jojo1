@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>TOFU SURVIVOR: CHAOS & SPEED</title>
+    <title>TOFU SURVIVOR: TOTAL RECOVERY EDITION</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', sans-serif; user-select: none; transition: filter 0.3s; }
         .time-stopped { filter: invert(100%) hue-rotate(180deg); }
@@ -19,6 +19,7 @@
         #status-ui { position: absolute; bottom: 30px; left: 30px; color: #fff; text-shadow: 2px 2px #000; }
         .bar-container { width: 250px; height: 12px; background: #222; border: 1.5px solid #fff; margin-bottom: 8px; overflow: hidden; border-radius: 3px; }
         #hp-fill { width: 100%; height: 100%; background: linear-gradient(90deg, #0a0, #0f0); transition: width 0.2s; }
+        #shield-fill { width: 0%; height: 100%; background: linear-gradient(90deg, #0055ff, #00aaff); transition: width 0.2s; }
         #skill-ui { color: #ff0; font-weight: bold; font-size: 18px; margin-bottom: 10px; text-transform: uppercase; }
         #warning { position: absolute; top: 35%; left: 50%; transform: translateX(-50%); color: #ff0044; font-size: 48px; font-weight: bold; display: none; }
     </style>
@@ -30,7 +31,8 @@
         <p style="font-size:32px; color:#fff;">RANK: <span id="final-rank">0</span> / 100</p>
     </div>
     <div id="start-screen" class="full-screen-overlay">
-        <h1 style="font-size: 48px; color: #0f0;">TOFU SURVIVOR: CHAOS</h1>
+        <h1 style="font-size: 48px; color: #0f0;">TOFU SURVIVOR: COMPLETE</h1>
+        <p>アイテム・進化・VFX全仕様復元完了。混沌を生き残れ。</p>
         <div class="char-container">
             <div class="char-card" onclick="startGame('white')"><h3 style="color:#fff">WHITE</h3><p>無敵化</p></div>
             <div class="char-card" onclick="startGame('cyan')"><h3 style="color:#0ff">CYAN</h3><p>時飛ばし</p></div>
@@ -42,6 +44,7 @@
         <div id="area-ui">SURVIVORS: <span id="survivors-count">100</span><br>SAFE RADIUS: <span id="area-radius">350</span>m</div>
         <div id="status-ui">
             <div id="skill-ui">CARDS: 0 / 3</div>
+            SHIELD <div class="bar-container"><div id="shield-fill"></div></div>
             HP <div class="bar-container"><div id="hp-fill"></div></div>
         </div>
     </div>
@@ -51,7 +54,7 @@
 
         let isGameStarted = false, areaRadius = 350, isGameOver = false;
         let charStats = { speed: 22, attack: 45, color: 0xffffff, type: 'white' };
-        let playerHP = 100;
+        let playerHP = 100, playerShield = 0;
         let isInvincible = false, isTimeStopped = false, isTimeSkipping = false;
         let skillCd = 0, collectedCards = 0, skillUses = 0;
         const entities = [], obstacles = [], items = [], particles = [], labels = [], keys = {};
@@ -70,6 +73,7 @@
         const floor = new THREE.Mesh(new THREE.PlaneGeometry(2000, 2000), new THREE.MeshPhongMaterial({ color: 0x111111 }));
         floor.rotation.x = -Math.PI / 2; scene.add(floor);
 
+        // ビル配置
         const buildColors = [0x444444, 0x223344, 0x442233, 0x224433, 0x333355];
         for(let x = -450; x <= 450; x += 55) {
             for(let z = -450; z <= 450; z += 55) {
@@ -82,7 +86,34 @@
             }
         }
 
-        const areaWall = new THREE.Mesh(new THREE.CylinderGeometry(areaRadius, areaRadius, 200, 64, 1, true), new THREE.MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.2, side: THREE.DoubleSide }));
+        // --- VFX & ITEM FUNCTIONS ---
+        function createParticle(pos, color) {
+            const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.3,0.3,0.3), new THREE.MeshBasicMaterial({color}));
+            mesh.position.copy(pos); const vel = new THREE.Vector3((Math.random()-0.5)*0.6, Math.random()*0.6, (Math.random()-0.5)*0.6);
+            scene.add(mesh); particles.push({mesh, vel, life: 1.0});
+        }
+        function createDamageLabel(pos, amount) {
+            const canvas = document.createElement('canvas'); canvas.width = 128; canvas.height = 64;
+            const ctx = canvas.getContext('2d'); ctx.fillStyle = '#ff0'; ctx.font = 'bold 40px Arial'; ctx.textAlign = 'center';
+            ctx.fillText(Math.floor(amount), 64, 45);
+            const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas), transparent: true }));
+            sprite.position.copy(pos).y += 3.5; sprite.scale.set(2.5, 1.25, 1);
+            scene.add(sprite); labels.push({ sprite, life: 1.0 });
+        }
+        function spawnItem() {
+            const type = Math.random() > 0.5 ? 'hp' : 'shield';
+            const mesh = new THREE.Mesh(new THREE.SphereGeometry(1.2), new THREE.MeshPhongMaterial({ color: type === 'hp' ? 0x00ff00 : 0x00aaff, emissive: type === 'hp' ? 0x00ff00 : 0x00aaff }));
+            let tx = (Math.random()-0.5)*areaRadius*1.5, tz = (Math.random()-0.5)*areaRadius*1.5;
+            mesh.position.set(tx, 1.2, tz); scene.add(mesh); items.push({ mesh, type });
+        }
+        function dropSkillCard(pos) {
+            const mesh = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.1, 2.2), new THREE.MeshPhongMaterial({ color: 0x00ffff, emissive: 0x00ffff }));
+            mesh.position.set(pos.x, 0.5, pos.z); scene.add(mesh); items.push({ mesh, type: 'card' });
+        }
+        for(let i=0; i<20; i++) spawnItem();
+
+        // --- ENTITY HELPERS ---
+        const areaWall = new THREE.Mesh(new THREE.CylinderGeometry(areaRadius, areaRadius, 200, 64, 1, true), new THREE.MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.2 }));
         areaWall.position.y = 100; scene.add(areaWall);
 
         const player = new THREE.Group();
@@ -117,24 +148,6 @@
         window.addEventListener('keydown', (e) => keys[e.code] = true);
         window.addEventListener('keyup', (e) => keys[e.code] = false);
 
-        function createParticle(pos, color) {
-            const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.3,0.3,0.3), new THREE.MeshBasicMaterial({color}));
-            mesh.position.copy(pos); const vel = new THREE.Vector3((Math.random()-0.5)*0.6, Math.random()*0.6, (Math.random()-0.5)*0.6);
-            scene.add(mesh); particles.push({mesh, vel, life: 1.0});
-        }
-        function createDamageLabel(pos, amount) {
-            const canvas = document.createElement('canvas'); canvas.width = 128; canvas.height = 64;
-            const ctx = canvas.getContext('2d'); ctx.fillStyle = '#ff0'; ctx.font = 'bold 40px Arial'; ctx.textAlign = 'center';
-            ctx.fillText(Math.floor(amount), 64, 45);
-            const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas), transparent: true }));
-            sprite.position.copy(pos).y += 3.5; sprite.scale.set(2.5, 1.25, 1);
-            scene.add(sprite); labels.push({ sprite, life: 1.0 });
-        }
-        function dropSkillCard(pos) {
-            const mesh = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.1, 2.2), new THREE.MeshPhongMaterial({ color: 0x00ffff, emissive: 0x00ffff }));
-            mesh.position.set(pos.x, 0.5, pos.z); scene.add(mesh); items.push({ mesh, type: 'card' });
-        }
-
         const clock = new THREE.Clock();
 
         function animate() {
@@ -146,6 +159,7 @@
             let maxUses = (charStats.type === 'cyan') ? (isEvolved ? 4 : 2) : (isEvolved ? 3 : 1);
             document.getElementById('skill-ui').innerText = isEvolved ? `★MAX EVOLVED★ ${skillUses}/${maxUses}` : `CARDS: ${collectedCards}/3 | SKILL: ${skillUses}/${maxUses}`;
 
+            // プレイヤー移動
             const pSpeed = charStats.speed * delta;
             if (keys['ArrowLeft']) player.rotation.y += 3.5 * delta;
             if (keys['ArrowRight']) player.rotation.y -= 3.5 * delta;
@@ -162,6 +176,7 @@
                 }
             });
 
+            // 攻撃
             if (keys['Space'] && !pStand.visible) {
                 pStand.visible = true; pCameraShakeAmount = 1.0; setTimeout(() => pStand.visible = false, 150);
                 const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
@@ -174,12 +189,9 @@
                     }
                 });
             }
-            if(pStand.visible) {
-                const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
-                pStand.position.copy(player.position).add(fwd.multiplyScalar(2.8));
-                pStand.position.y = 0.8;
-            }
+            if(pStand.visible) { pStand.position.y = 0.8; }
 
+            // スキル
             if (keys['KeyR'] && collectedCards >= 3 && skillUses < maxUses && !isTimeStopped && !isTimeSkipping && !isInvincible) {
                 skillUses++;
                 if(charStats.type==='gold'){ isTimeStopped=true; document.body.classList.add('time-stopped'); setTimeout(()=>{isTimeStopped=false; document.body.classList.remove('time-stopped');}, isEvolved?5500:3000); }
@@ -187,22 +199,21 @@
                 if(charStats.type==='white'){ isInvincible=true; pBody.material.emissive.setHex(0xffffff); setTimeout(()=>{isInvincible=false; pBody.material.emissive.setHex(0x000000);}, isEvolved?8000:5000); }
             }
 
+            // カメラシェイク
             if (pCameraShakeAmount > 0) {
                 camera.position.set(P_CAMERA_BASE_POS.x + (Math.random()-0.5)*pCameraShakeAmount, P_CAMERA_BASE_POS.y + (Math.random()-0.5)*pCameraShakeAmount, P_CAMERA_BASE_POS.z);
                 pCameraShakeAmount -= delta * 4;
             } else camera.position.copy(P_CAMERA_BASE_POS);
 
+            // 敵AI & エリア
             const botDelta = isTimeStopped ? 0 : (isTimeSkipping ? delta * 0.2 : delta);
-            
-            // --- エリア収縮スピードの大幅強化 ---
-            areaRadius -= botDelta * 1.2; 
+            areaRadius -= botDelta * 1.2; // 高速収縮
             areaWall.geometry.dispose(); areaWall.geometry = new THREE.CylinderGeometry(areaRadius, areaRadius, 200, 64, 1, true);
 
-            // --- 敵AI・乱戦 & 強化ロジック ---
             entities.forEach(e => {
                 if (!e.alive || isTimeStopped) return;
                 
-                // Separation: 重なり防止をさらに強化
+                // 重なり防止
                 entities.forEach(other => {
                     if (other.alive && other.id !== e.id) {
                         const dist = e.group.position.distanceTo(other.group.position);
@@ -213,7 +224,6 @@
                     }
                 });
 
-                // ターゲット選定（プレイヤーまたは最も近い敵）
                 let targetPos = player.position;
                 let minDist = e.group.position.distanceTo(player.position);
                 let isTargetPlayer = true;
@@ -225,44 +235,53 @@
                     }
                 });
 
-                // 移動実行：大幅にスピードアップ
-                if (minDist < 200) { 
+                if (minDist < 200) {
                     const moveDir = new THREE.Vector3().subVectors(targetPos, e.group.position).normalize();
                     e.group.position.add(moveDir.multiplyScalar(15.0 * botDelta));
                 }
 
-                // 攻撃実行：敵同士でもダメージを発生させる
                 if (minDist < 7.0 && e.attackCd <= 0) {
-                    e.attackCd = 1.8; // 攻撃頻度もアップ
-                    e.stand.visible = true; setTimeout(()=>e.stand.visible=false, 300);
-                    e.stand.position.copy(e.group.position).lerp(targetPos, 0.5); e.stand.position.y = 0.8;
-                    
+                    e.attackCd = 1.8; e.stand.visible = true; setTimeout(()=>e.stand.visible=false, 300);
+                    e.stand.position.copy(e.group.position).lerp(targetPos, 0.5).y = 0.8;
                     if(isTargetPlayer && e.stand.position.distanceTo(player.position) < 3.0 && !isInvincible && !isTimeSkipping) {
-                        playerHP -= charStats.attack; createDamageLabel(player.position, charStats.attack);
+                        if(playerShield > 0) playerShield -= 15; else playerHP -= 15;
+                        createDamageLabel(player.position, 15);
                     } else if (!isTargetPlayer) {
-                        // 敵同士の攻撃
-                        entities.forEach(v => { 
-                            if(v.alive && v.id !== e.id && v.group.position.distanceTo(e.stand.position) < 2.5) {
-                                v.hp -= charStats.attack;
-                                createDamageLabel(v.group.position, charStats.attack);
-                            }
-                        });
+                        entities.forEach(v => { if(v.alive && v.id !== e.id && v.group.position.distanceTo(e.stand.position) < 2.5) v.hp -= 20; });
                     }
                 }
                 e.attackCd -= botDelta;
                 if(e.group.position.length() > areaRadius) e.hp -= botDelta * 25;
-                if(e.hp <= 0) { e.alive = false; if(e.killedByPlayer) dropSkillCard(e.group.position); scene.remove(e.group); scene.remove(e.stand); }
+                if(e.hp <= 0) { 
+                    e.alive = false; 
+                    if(e.killedByPlayer) dropSkillCard(e.group.position); 
+                    for(let i=0; i<10; i++) createParticle(e.group.position, 0xffff00);
+                    scene.remove(e.group); scene.remove(e.stand); 
+                }
             });
 
+            // VFX更新
             for(let i=particles.length-1;i>=0;i--){ particles[i].mesh.position.add(particles[i].vel); particles[i].life-=delta*2; particles[i].mesh.scale.setScalar(particles[i].life); if(particles[i].life<=0){scene.remove(particles[i].mesh); particles.splice(i,1);}}
             for(let i=labels.length-1;i>=0;i--){ labels[i].sprite.position.y+=delta; labels[i].life-=delta; labels[i].sprite.material.opacity=labels[i].life; if(labels[i].life<=0){scene.remove(labels[i].sprite); labels.splice(i,1);}}
-            items.forEach((it, i) => { if(player.position.distanceTo(it.mesh.position)<2.5){ if(it.type==='card') collectedCards++; scene.remove(it.mesh); items.splice(i,1); } });
+            
+            // アイテム判定
+            items.forEach((it, i) => { 
+                if(player.position.distanceTo(it.mesh.position)<2.8){ 
+                    if(it.type==='card') collectedCards++; 
+                    if(it.type==='hp') playerHP = Math.min(100, playerHP+30);
+                    if(it.type==='shield') playerShield = Math.min(100, playerShield+50);
+                    scene.remove(it.mesh); items.splice(i,1); 
+                    if(it.type!=='card') setTimeout(spawnItem, 8000);
+                } 
+            });
 
+            // システム
             if (player.position.length() > areaRadius) { playerHP -= delta * 15; document.getElementById('warning').style.display='block'; }
             else { document.getElementById('warning').style.display='none'; }
 
             const survivors = entities.filter(e => e.alive).length + 1;
             document.getElementById('hp-fill').style.width = Math.max(0, playerHP) + "%";
+            document.getElementById('shield-fill').style.width = playerShield + "%";
             document.getElementById('survivors-count').innerText = survivors;
             document.getElementById('area-radius').innerText = Math.floor(areaRadius);
 
