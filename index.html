@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>TOFU SURVIVOR: ULTIMATE EDITION</title>
+    <title>TOFU SURVIVOR: CARD COLLECTOR</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', sans-serif; user-select: none; transition: filter 0.3s; }
         .time-stopped { filter: invert(100%) hue-rotate(180deg); }
@@ -28,7 +28,7 @@
 
     <div id="start-screen">
         <h1 style="font-size: 48px; color: #f0f;">TOFU SURVIVOR</h1>
-        <p>アルティメットスキル発動：[R] キーに割り当てました</p>
+        <p>カードを5枚集めてアルティメット解放（Rキー）</p>
         <div class="char-container">
             <div class="char-card" onclick="startGame('white')"><h3 style="color:#fff">WHITE</h3><p>無敵化</p></div>
             <div class="char-card" onclick="startGame('cyan')"><h3 style="color:#0ff">CYAN</h3><p>時飛ばし(6s)</p></div>
@@ -40,7 +40,7 @@
         <div id="warning">⚠️ OUT OF AREA ⚠️</div>
         <div id="area-ui">SURVIVORS: <span id="survivors-count">40</span><br>SAFE RADIUS: <span id="area-radius">250</span>m</div>
         <div id="status-ui">
-            <div id="skill-ui">READY [R]</div>
+            <div id="skill-ui">CARDS: 0 / 5</div>
             SHIELD <div class="bar-container"><div id="shield-fill"></div></div>
             HP <div class="bar-container"><div id="hp-fill"></div></div>
         </div>
@@ -53,7 +53,7 @@
         let charStats = { speed: 22, attack: 15, color: 0xffffff, type: 'white' };
         let playerHP = 100, playerShield = 0;
         let isInvincible = false, isTimeStopped = false, isTimeSkipping = false;
-        let skillCd = 0;
+        let skillCd = 0, collectedCards = 0; // カード収集用
         const entities = [], obstacles = [], items = [], keys = {};
 
         let pCameraShakeAmount = 0;
@@ -109,6 +109,15 @@
             scene.add(mesh);
             items.push({ mesh, type });
         }
+
+        // スキルカードをドロップする関数
+        function dropSkillCard(pos) {
+            const mesh = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.1, 1.8), new THREE.MeshPhongMaterial({ color: 0x00ffff, emissive: 0x006666 }));
+            mesh.position.set(pos.x, 0.5, pos.z);
+            scene.add(mesh);
+            items.push({ mesh, type: 'card' });
+        }
+
         for(let i=0; i<15; i++) spawnItem();
 
         const areaWall = new THREE.Mesh(new THREE.CylinderGeometry(areaRadius, areaRadius, 150, 64, 1, true), new THREE.MeshBasicMaterial({ color: 0x8800ff, transparent: true, opacity: 0.3, side: THREE.DoubleSide }));
@@ -163,11 +172,17 @@
             const delta = Math.min(clock.getDelta(), 0.1);
             if (!isGameStarted || isGameOver) return;
 
-            if (skillCd > 0) {
+            // UI更新: カード枚数とアルティメット状態
+            if (collectedCards < 5) {
+                document.getElementById('skill-ui').innerText = `CARDS: ${collectedCards} / 5 (LOCKED)`;
+                document.getElementById('skill-ui').style.color = "#888";
+            } else if (skillCd > 0) {
                 skillCd -= delta;
-                document.getElementById('skill-ui').innerText = "CHARGING...";
+                document.getElementById('skill-ui').innerText = "ULTIMATE: CHARGING...";
+                document.getElementById('skill-ui').style.color = "#ff0";
             } else {
-                document.getElementById('skill-ui').innerText = "ULTIMATE [R]";
+                document.getElementById('skill-ui').innerText = "ULTIMATE READY [R]";
+                document.getElementById('skill-ui').style.color = "#0ff";
             }
 
             const pSpeed = charStats.speed * delta;
@@ -189,25 +204,21 @@
                 camera.position.copy(P_CAMERA_BASE_POS);
             }
 
-            // [R]キーでアルティメットスキル発動
-            if (keys['KeyR'] && skillCd <= 0) {
+            // アルティメット発動（カードが5枚以上の時のみ）
+            if (keys['KeyR'] && skillCd <= 0 && collectedCards >= 5) {
                 skillCd = 12;
                 if (charStats.type === 'white') { isInvincible = true; pBody.material.emissive.setHex(0xffffff); setTimeout(() => { isInvincible = false; pBody.material.emissive.setHex(0x000000); }, 3000); }
                 if (charStats.type === 'cyan') { 
                     isTimeSkipping = true; 
                     document.getElementById('time-skip-overlay').style.display = 'block';
-                    setTimeout(() => { 
-                        isTimeSkipping = false; 
-                        document.getElementById('time-skip-overlay').style.display = 'none';
-                    }, 6000); 
+                    setTimeout(() => { isTimeSkipping = false; document.getElementById('time-skip-overlay').style.display = 'none'; }, 6000); 
                 }
                 if (charStats.type === 'gold') { isTimeStopped = true; document.body.classList.add('time-stopped'); setTimeout(() => { isTimeStopped = false; document.body.classList.remove('time-stopped'); }, 4000); }
             }
 
             pAttackCd -= delta;
             if (keys['Space'] && pAttackCd <= 0) { 
-                pAttackCd = 0.5; pStand.visible = true; 
-                pCameraShakeAmount = 0.8;
+                pAttackCd = 0.5; pStand.visible = true; pCameraShakeAmount = 0.8;
                 setTimeout(() => pStand.visible = false, 200); 
             }
             
@@ -288,14 +299,30 @@
                 if (e.group.position.length() > areaRadius * 0.8) moveDir.add(e.group.position.clone().negate().normalize()).normalize();
                 e.group.position.add(moveDir.multiplyScalar(14 * botDelta));
                 checkBuildingCollision(e.group.position, 0.8);
-                if (moveDir.length() > 0.01 && !e.stand.visible) {
-                    e.group.lookAt(e.group.position.x + moveDir.x, 0, e.group.position.z + moveDir.z);
-                }
+                if (moveDir.length() > 0.01 && !e.stand.visible) { e.group.lookAt(e.group.position.x + moveDir.x, 0, e.group.position.z + moveDir.z); }
                 if (e.group.position.length() > areaRadius) e.hp -= botDelta * 35;
-                if (e.hp <= 0) { e.alive = false; scene.remove(e.group); scene.remove(e.stand); }
+                
+                if (e.hp <= 0) { 
+                    e.alive = false; 
+                    dropSkillCard(e.group.position); // 【追加】死亡時にカードをドロップ
+                    scene.remove(e.group); scene.remove(e.stand); 
+                }
             });
 
-            items.forEach((it, idx) => { if (player.position.distanceTo(it.mesh.position) < 2.5) { if (it.type === 'hp') playerHP = Math.min(100, playerHP + 40); else playerShield = Math.min(100, playerShield + 60); scene.remove(it.mesh); items.splice(idx, 1); setTimeout(spawnItem, 8000); } });
+            // アイテム収集判定
+            items.forEach((it, idx) => { 
+                if (player.position.distanceTo(it.mesh.position) < 2.5) { 
+                    if (it.type === 'hp') playerHP = Math.min(100, playerHP + 40); 
+                    else if (it.type === 'shield') playerShield = Math.min(100, playerShield + 60); 
+                    else if (it.type === 'card') collectedCards++; // 【追加】カード収集
+                    
+                    scene.remove(it.mesh); 
+                    items.splice(idx, 1); 
+                    if (it.type !== 'card') setTimeout(spawnItem, 8000); 
+                } 
+                if (it.type === 'card') it.mesh.rotation.y += delta * 2; // カードを回転させる
+            });
+
             if (player.position.length() > areaRadius) playerHP -= delta * 25;
             
             const survivorCount = entities.filter(e => e.alive).length + 1;
