@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Tofu Survivor - Full Stand & Items</title>
+    <title>Tofu Survivor - Shield & Requiem</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: 'MS Gothic', sans-serif; }
         #start-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 20, 0.95); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; color: white; text-align: center; }
@@ -14,8 +14,9 @@
         #ui-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 20; display: none; }
         #area-ui { position: absolute; top: 10px; right: 10px; color: #f0f; background: rgba(0,0,0,0.8); padding: 10px; border: 2px solid #f0f; border-radius: 5px; font-weight: bold; text-align: right; }
         #status-ui { position: absolute; bottom: 20px; left: 20px; color: #fff; text-shadow: 2px 2px #000; }
-        .bar-container { width: 220px; height: 14px; background: #333; border: 2px solid #fff; margin-bottom: 8px; }
+        .bar-container { width: 220px; height: 12px; background: #333; border: 2px solid #fff; margin-bottom: 5px; overflow: hidden; }
         #hp-fill { width: 100%; height: 100%; background: #0f0; transition: width 0.1s; }
+        #shield-fill { width: 0%; height: 100%; background: #00aaff; transition: width 0.1s; }
         #warning { position: absolute; top: 30%; left: 50%; transform: translateX(-50%); color: #ff0044; font-size: 40px; font-weight: bold; display: none; }
         #time-stop-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; mix-blend-mode: difference; background: white; display: none; z-index: 50; }
         #crimson-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; background: rgba(255, 0, 0, 0.2); display: none; z-index: 49; }
@@ -52,8 +53,9 @@
         <div id="warning">⚠️AREA DAMAGE⚠️</div>
         <div id="area-ui">SURVIVORS: <span id="survivors-count">--</span><br>RADIUS: <span id="area-radius">--</span></div>
         <div id="status-ui">
-            <div id="at-label" style="color:#f00; font-weight:bold;">ATTACK: READY</div>
-            <div id="ts-label" style="color:#ff0; font-weight:bold; display:none;">ABILITY: READY</div>
+            <div id="at-label" style="color:#f00; font-weight:bold; margin-bottom:5px;">ATTACK: READY</div>
+            <div id="ts-label" style="color:#ff0; font-weight:bold; margin-bottom:5px;">ABILITY: READY</div>
+            SHIELD <div class="bar-container"><div id="shield-fill"></div></div>
             HP <div class="bar-container"><div id="hp-fill"></div></div>
         </div>
     </div>
@@ -64,9 +66,8 @@
         let isGameStarted = false;
         let charStats = { speed: 22, attack: 40, color: 0xffffff, type: 'white' };
         let isTimeStopped = false, isErasingTime = false, isRequiem = false, hasCrit = false;
-        let timeStopCooldown = 0, attackCooldown = 0, playerHP = 100;
-        let areaRadius = 250;
-        let powerUpTimer = 0;
+        let timeStopCooldown = 0, attackCooldown = 0, playerHP = 100, playerShield = 0;
+        let areaRadius = 250, powerUpTimer = 0;
         const enemies = [], keys = {}, obstacles = [], items = [];
 
         const scene = new THREE.Scene();
@@ -85,6 +86,7 @@
         floor.rotation.x = -Math.PI / 2;
         scene.add(floor);
 
+        // 障害物
         for (let i = 0; i < 60; i++) {
             const h = 20 + Math.random() * 40;
             const mesh = new THREE.Mesh(new THREE.BoxGeometry(15, h, 15), new THREE.MeshPhongMaterial({ color: 0x333344 }));
@@ -115,7 +117,7 @@
         player.add(stand);
 
         function spawnItem() {
-            const types = [0x00ff00, 0xff0000, 0x00aaff]; // 緑(HP), 赤(ATK), 青(Shield/HP)
+            const types = [0x00ff00, 0xff0000, 0x00aaff]; // 緑(HP), 赤(ATK), 青(Shield)
             const type = types[Math.floor(Math.random() * types.length)];
             const mesh = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), new THREE.MeshPhongMaterial({ color: type, emissive: type, emissiveIntensity: 0.5 }));
             const ang = Math.random() * Math.PI * 2;
@@ -135,13 +137,24 @@
             if (charStats.type === 'cyan') stand.material.color.setHex(0xff0033);
             if (charStats.type === 'white') stand.material.color.setHex(0xffd700);
             
-            document.getElementById('ts-label').style.display = 'block';
             document.getElementById('start-screen').style.display = 'none';
             document.getElementById('ui-container').style.display = 'block';
-            
             for(let i=0; i<12; i++) spawnItem();
             isGameStarted = true;
         };
+
+        function applyDamage(dmg) {
+            if (isRequiem) return; // GER中は無効
+            if (playerShield > 0) {
+                playerShield -= dmg;
+                if (playerShield < 0) {
+                    playerHP += playerShield;
+                    playerShield = 0;
+                }
+            } else {
+                playerHP -= dmg;
+            }
+        }
 
         function checkCollision(x, z) {
             for (let b of obstacles) if (x > b.minX && x < b.maxX && z > b.minZ && z < b.maxZ) return true;
@@ -212,7 +225,7 @@
                 if (it.mesh.position.distanceTo(player.position) < 2) {
                     if (it.type === 0x00ff00) playerHP = Math.min(100, playerHP + 20);
                     if (it.type === 0xff0000) powerUpTimer = 10;
-                    if (it.type === 0x00aaff) playerHP = Math.min(100, playerHP + 30); // 青: シールド回復
+                    if (it.type === 0x00aaff) playerShield = Math.min(100, playerShield + 50); // シールド回復
                     scene.remove(it.mesh);
                     items.splice(idx, 1);
                     setTimeout(spawnItem, 7000);
@@ -256,21 +269,21 @@
                         e.lastDir.copy(dir.multiplyScalar(10 * delta));
                         const nx = e.mesh.position.x + e.lastDir.x; const nz = e.mesh.position.z + e.lastDir.z;
                         if (!checkCollision(nx, nz)) { e.mesh.position.x = nx; e.mesh.position.z = nz; }
-                        if (!isRequiem && !isErasingTime && e.mesh.position.distanceTo(player.position) < 1.5) playerHP -= delta * 15;
+                        if (!isRequiem && !isErasingTime && e.mesh.position.distanceTo(player.position) < 1.5) applyDamage(delta * 15);
                     }
                     if (e.hp <= 0) { e.alive = false; e.mesh.visible = false; }
                 });
             }
 
             if (player.position.length() > areaRadius) {
-                if (!isRequiem) playerHP -= delta * 15;
+                applyDamage(delta * 15);
                 document.getElementById('warning').style.display = 'block';
             } else document.getElementById('warning').style.display = 'none';
 
             document.getElementById('hp-fill').style.width = Math.max(0, playerHP) + "%";
-            document.getElementById('hp-fill').style.background = powerUpTimer > 0 ? "#ff0000" : "#0f0";
+            document.getElementById('shield-fill').style.width = Math.max(0, playerShield) + "%";
             document.getElementById('at-label').innerText = powerUpTimer > 0 ? `POWER UP: ${Math.ceil(powerUpTimer)}` : (attackCooldown > 0 ? `AT CD: ${attackCooldown.toFixed(1)}` : "ATTACK: READY");
-            document.getElementById('ts-label').innerText = timeStopCooldown > 0 ? `CD: ${Math.ceil(timeStopCooldown)}` : "ABILITY: READY (E)";
+            document.getElementById('ts-label').innerText = timeStopCooldown > 0 ? `CD: ${Math.ceil(timeStopCooldown)}` : (isRequiem ? "GER ACTIVE!!" : "ABILITY: READY (E)");
             document.getElementById('area-radius').innerText = Math.floor(areaRadius);
             document.getElementById('survivors-count').innerText = enemies.filter(e => e.alive).length + 1;
 
