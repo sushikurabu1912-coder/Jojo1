@@ -2,14 +2,14 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>TOFU SURVIVOR: PRECISION EDITION</title>
+    <title>TOFU SURVIVOR: ULTIMATE AI & COLLISION</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', sans-serif; user-select: none; transition: filter 0.3s; }
         .time-stopped { filter: invert(100%) hue-rotate(180deg); }
         #start-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 30, 0.95); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; color: white; text-align: center; }
         .char-container { display: flex; gap: 20px; margin-top: 30px; }
         .char-card { border: 3px solid #444; padding: 20px; border-radius: 15px; cursor: pointer; transition: 0.3s; background: #111; width: 160px; }
-        .char-card:hover { border-color: #f0f; transform: translateY(-10px); box-shadow: 0 0 20px #f0f; background: #1a1a1a; }
+        .char-card:hover { border-color: #f0f; transform: translateY(-10px); box-shadow: 0 0 20px #f0f; }
         #ui-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 20; display: none; }
         #area-ui { position: absolute; top: 20px; right: 20px; color: #f0f; background: rgba(0,0,0,0.8); padding: 15px; border: 2px solid #f0f; border-radius: 10px; font-weight: bold; text-align: right; }
         #status-ui { position: absolute; bottom: 30px; left: 30px; color: #fff; text-shadow: 2px 2px #000; }
@@ -24,7 +24,7 @@
 
     <div id="start-screen">
         <h1 style="font-size: 48px; color: #f0f;">TOFU SURVIVOR</h1>
-        <p>CYAN: 時飛ばしが6秒間に強化。BOTの攻撃精度を修正。</p>
+        <p>最終調整：ビルの完全物理判定 ＆ 戦闘AIの高度化</p>
         <div class="char-container">
             <div class="char-card" onclick="startGame('white')"><h3 style="color:#fff">WHITE</h3><p>無敵化</p></div>
             <div class="char-card" onclick="startGame('cyan')"><h3 style="color:#0ff">CYAN</h3><p>時飛ばし(6s)</p></div>
@@ -69,23 +69,34 @@
         for(let x = -range; x <= range; x += gridSize) {
             for(let z = -range; z <= range; z += gridSize) {
                 if (Math.abs(x) < 25 && Math.abs(z) < 25) continue;
-                const h = 15 + Math.random() * 35, w = 8 + Math.random() * 4;
+                const h = 15 + Math.random() * 35, w = 10 + Math.random() * 5;
                 const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, w), new THREE.MeshPhongMaterial({ color: [0xff4444, 0x44ff44, 0x4444ff, 0xffff44, 0xff44ff, 0x44ffff][Math.floor(Math.random()*6)] }));
-                mesh.position.set(x + (Math.random()-0.5)*30, h/2, z + (Math.random()-0.5)*30);
+                mesh.position.set(x + (Math.random()-0.5)*25, h/2, z + (Math.random()-0.5)*25);
                 scene.add(mesh);
-                obstacles.push({ mesh, radius: (w / 2) + 1.2 });
+                obstacles.push({ pos: new THREE.Vector2(mesh.position.x, mesh.position.z), radius: (w / 2) + 0.8 });
             }
+        }
+
+        function checkBuildingCollision(position, radius) {
+            obstacles.forEach(o => {
+                const dist = new THREE.Vector2(position.x, position.z).distanceTo(o.pos);
+                if (dist < o.radius + radius) {
+                    const pushDir = new THREE.Vector2(position.x, position.z).sub(o.pos).normalize();
+                    const overlap = (o.radius + radius) - dist;
+                    position.x += pushDir.x * overlap;
+                    position.z += pushDir.y * overlap;
+                }
+            });
         }
 
         function spawnItem() {
             const type = Math.random() > 0.5 ? 'hp' : 'shield';
-            const color = type === 'hp' ? 0x00ff00 : 0x00aaff;
-            const mesh = new THREE.Mesh(new THREE.SphereGeometry(1.0), new THREE.MeshPhongMaterial({ color, emissive: color }));
+            const mesh = new THREE.Mesh(new THREE.SphereGeometry(1.0), new THREE.MeshPhongMaterial({ color: type === 'hp' ? 0x00ff00 : 0x00aaff, emissive: type === 'hp' ? 0x00ff00 : 0x00aaff }));
             let tx, tz, ok = false;
             while(!ok) {
                 const ang = Math.random()*Math.PI*2, dist = Math.random()*areaRadius;
                 tx = Math.cos(ang)*dist; tz = Math.sin(ang)*dist;
-                if (!obstacles.some(o => new THREE.Vector2(tx, tz).distanceTo(new THREE.Vector2(o.mesh.position.x, o.mesh.position.z)) < o.radius+2)) ok = true;
+                if (!obstacles.some(o => new THREE.Vector2(tx, tz).distanceTo(o.pos) < o.radius+2)) ok = true;
             }
             mesh.position.set(tx, 1.0, tz);
             scene.add(mesh);
@@ -111,13 +122,12 @@
             stand.visible = false; scene.add(stand);
             let tx, tz, spawned = false;
             while(!spawned) {
-                const ang = Math.random()*Math.PI*2, dist = 60 + Math.random()*170;
+                const ang = Math.random()*Math.PI*2, dist = 50 + Math.random()*150;
                 tx = Math.cos(ang)*dist; tz = Math.sin(ang)*dist;
-                if (!obstacles.some(o => new THREE.Vector3(tx, 0, tz).distanceTo(o.mesh.position) < o.radius+4)) spawned = true;
+                if (!obstacles.some(o => new THREE.Vector2(tx, tz).distanceTo(o.pos) < o.radius+4)) spawned = true;
             }
-            group.position.set(tx, 0, tz);
-            scene.add(group);
-            return { group, stand, hp: 100, alive: true, id: Math.random(), attackCd: 0, strafeDir: 1, stateTimer: 0, slalomSeed: Math.random() * 100, targetId: null };
+            group.position.set(tx, 0, tz); scene.add(group);
+            return { group, stand, hp: 100, alive: true, id: Math.random(), attackCd: 0, aiState: 'idle', stateTimer: 0, strafeDir: Math.random() > 0.5 ? 1 : -1, targetId: null };
         }
         for(let i=0; i<39; i++) entities.push(createEntity());
 
@@ -150,21 +160,15 @@
             const mx = (keys['KeyD']?1:0) - (keys['KeyA']?1:0), mz = (keys['KeyS']?1:0) - (keys['KeyW']?1:0);
             if (mx !== 0 || mz !== 0) {
                 const moveVec = new THREE.Vector3(mx, 0, mz).normalize().multiplyScalar(pSpeed).applyQuaternion(player.quaternion);
-                const nextPos = player.position.clone().add(moveVec);
-                if (!obstacles.some(o => nextPos.distanceTo(o.mesh.position) < o.radius)) player.position.copy(nextPos);
+                player.position.add(moveVec);
             }
+            checkBuildingCollision(player.position, 0.8);
 
             if (keys['KeyE'] && skillCd <= 0) {
                 skillCd = 12;
                 if (charStats.type === 'white') { isInvincible = true; pBody.material.emissive.setHex(0xffffff); setTimeout(() => { isInvincible = false; pBody.material.emissive.setHex(0x000000); }, 3000); }
-                if (charStats.type === 'cyan') { 
-                    isTimeSkipping = true; scene.background.setHex(0x000022); 
-                    setTimeout(() => { isTimeSkipping = false; scene.background.setHex(0x000005); }, 6000); // 6秒に修正
-                }
-                if (charStats.type === 'gold') { 
-                    isTimeStopped = true; document.body.classList.add('time-stopped');
-                    setTimeout(() => { isTimeStopped = false; document.body.classList.remove('time-stopped'); }, 4000); 
-                }
+                if (charStats.type === 'cyan') { isTimeSkipping = true; scene.background.setHex(0x000022); setTimeout(() => { isTimeSkipping = false; scene.background.setHex(0x000005); }, 6000); }
+                if (charStats.type === 'gold') { isTimeStopped = true; document.body.classList.add('time-stopped'); setTimeout(() => { isTimeStopped = false; document.body.classList.remove('time-stopped'); }, 4000); }
             }
 
             pAttackCd -= delta;
@@ -173,7 +177,7 @@
                 const offset = new THREE.Vector3(0, 0, -3.2).applyQuaternion(player.quaternion);
                 pStand.position.copy(player.position).add(offset);
                 pStand.position.x += (Math.random()-0.5)*0.9; pStand.position.y = 1.5 + (Math.random()-0.5)*0.9; pStand.position.z += (Math.random()-0.5)*0.9;
-                entities.forEach(e => { if (e.alive && e.group.position.distanceTo(pStand.position) < 5.2) e.hp -= charStats.attack * delta * 10; });
+                entities.forEach(e => { if (e.alive && e.group.position.distanceTo(pStand.position) < 5.2) e.hp -= charStats.attack * delta * 12; });
             }
 
             const botDelta = isTimeStopped ? 0 : (isTimeSkipping ? delta * 0.3 : delta);
@@ -189,28 +193,30 @@
 
                 let moveDir = new THREE.Vector3();
                 const toTarget = new THREE.Vector3().subVectors(target.position, e.group.position).normalize();
-                const slalom = Math.sin(Date.now() * 0.005 + e.slalomSeed) * 0.8;
+                
+                // Advanced Combat AI
+                e.stateTimer -= botDelta;
+                if (e.stateTimer <= 0) {
+                    const r = Math.random();
+                    if (minDist > 15) e.aiState = 'rush';
+                    else if (r < 0.4) e.aiState = 'strafe';
+                    else if (r < 0.7) e.aiState = 'retreat';
+                    else e.aiState = 'rush';
+                    e.stateTimer = 1.0 + Math.random() * 2;
+                }
 
-                if (minDist < 60) {
-                    if (minDist > 12) moveDir.copy(toTarget);
-                    else if (minDist < 6) moveDir.copy(toTarget).negate();
-                    else moveDir.set(-toTarget.z, 0, toTarget.x).multiplyScalar(e.strafeDir);
-                    moveDir.add(new THREE.Vector3(-toTarget.z, 0, toTarget.x).multiplyScalar(slalom)).normalize();
-                    
-                    e.attackCd -= botDelta;
-                    if (minDist < 8.5 && e.attackCd <= 0) { 
-                        e.attackCd = 2.5; 
-                        e.stand.visible = true; 
-                        e.targetId = (target === player) ? "player" : target.uuid; // 攻撃対象を記録
-                        setTimeout(() => e.stand.visible = false, 400); 
-                    }
-                } else {
-                    e.wanderAngle += (Math.random()-0.5)*0.2;
-                    moveDir.set(Math.cos(e.wanderAngle), 0, Math.sin(e.wanderAngle));
+                if (e.aiState === 'rush') moveDir.copy(toTarget);
+                else if (e.aiState === 'retreat') moveDir.copy(toTarget).negate();
+                else moveDir.set(-toTarget.z, 0, toTarget.x).multiplyScalar(e.strafeDir);
+
+                e.attackCd -= botDelta;
+                if (minDist < 8.5 && e.attackCd <= 0) { 
+                    e.attackCd = 2.0; e.stand.visible = true; e.targetId = (target === player) ? "player" : target.uuid;
+                    e.aiState = 'retreat'; e.stateTimer = 1.0; // Hit and away
+                    setTimeout(() => e.stand.visible = false, 400); 
                 }
 
                 if (e.stand.visible) {
-                    // 攻撃方向修正: 攻撃中もターゲットの最新位置を向き続ける
                     let currentTargetObj = (e.targetId === "player") ? player : entities.find(v => v.group.uuid === e.targetId)?.group;
                     if (currentTargetObj) {
                         const preciseDir = new THREE.Vector3().subVectors(currentTargetObj.position, e.group.position).normalize();
@@ -219,27 +225,26 @@
                     const fwd = new THREE.Vector3(0,0,-1).applyQuaternion(e.group.quaternion);
                     e.stand.position.copy(e.group.position).add(fwd.multiplyScalar(3.2));
                     e.stand.position.x += (Math.random()-0.5)*0.8; e.stand.position.y = 1.5 + (Math.random()-0.5)*0.8; e.stand.position.z += (Math.random()-0.5)*0.8;
-
-                    if (e.stand.position.distanceTo(player.position) < 5.2 && !isInvincible) { if (playerShield > 0) playerShield -= 20*botDelta; else playerHP -= 20*botDelta; }
-                    entities.forEach(v => { if (v.alive && v.id !== e.id && e.stand.position.distanceTo(v.group.position) < 5.2) v.hp -= 8*botDelta; });
+                    if (e.stand.position.distanceTo(player.position) < 5.2 && !isInvincible) { if (playerShield > 0) playerShield -= 25*botDelta; else playerHP -= 25*botDelta; }
+                    entities.forEach(v => { if (v.alive && v.id !== e.id && e.stand.position.distanceTo(v.group.position) < 5.2) v.hp -= 10*botDelta; });
                 }
 
-                obstacles.forEach(o => { if (e.group.position.distanceTo(o.mesh.position) < o.radius + 3) { const push = new THREE.Vector3().subVectors(e.group.position, o.mesh.position).normalize(); moveDir.add(push.multiplyScalar(2.0)).normalize(); } });
                 if (e.group.position.length() > areaRadius * 0.8) moveDir.add(e.group.position.clone().negate().normalize()).normalize();
-                const nextB = e.group.position.clone().add(moveDir.multiplyScalar(13 * botDelta));
-                if (!obstacles.some(o => nextB.distanceTo(o.mesh.position) < o.radius)) e.group.position.copy(nextB);
+                e.group.position.add(moveDir.multiplyScalar(14 * botDelta));
+                checkBuildingCollision(e.group.position, 0.8);
+
                 if (moveDir.length() > 0.01 && !e.stand.visible) e.group.lookAt(e.group.position.x + moveDir.x, 0, e.group.position.z + moveDir.z);
-                if (e.group.position.length() > areaRadius) e.hp -= botDelta * 30;
+                if (e.group.position.length() > areaRadius) e.hp -= botDelta * 35;
                 if (e.hp <= 0) { e.alive = false; scene.remove(e.group); scene.remove(e.stand); }
             });
 
             items.forEach((it, idx) => { if (player.position.distanceTo(it.mesh.position) < 2.5) { if (it.type === 'hp') playerHP = Math.min(100, playerHP + 40); else playerShield = Math.min(100, playerShield + 60); scene.remove(it.mesh); items.splice(idx, 1); setTimeout(spawnItem, 8000); } });
             if (player.position.length() > areaRadius) playerHP -= delta * 25;
-            document.getElementById('warning').style.display = (player.position.length() > areaRadius) ? 'block' : 'none';
             document.getElementById('hp-fill').style.width = Math.max(0, playerHP) + "%";
             document.getElementById('shield-fill').style.width = playerShield + "%";
             document.getElementById('survivors-count').innerText = entities.filter(e => e.alive).length + 1;
             document.getElementById('area-radius').innerText = Math.floor(areaRadius);
+            document.getElementById('warning').style.display = (player.position.length() > areaRadius) ? 'block' : 'none';
             if (playerHP <= 0) { alert("RANK: " + (entities.filter(e => e.alive).length + 1)); location.reload(); }
             renderer.render(scene, camera);
         }
