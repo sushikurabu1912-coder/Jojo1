@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Tofu Survivor - Crimson 6s</title>
+    <title>Tofu Survivor - Battle Royale</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: 'MS Gothic', sans-serif; }
         #start-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 20, 0.95); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; color: white; text-align: center; }
@@ -51,7 +51,7 @@
     <div id="requiem-overlay"></div>
     <div id="ui-container">
         <div id="warning">⚠️AREA DAMAGE⚠️</div>
-        <div id="area-ui">SURVIVORS: <span id="survivors-count">--</span><br>RADIUS: <span id="area-radius">--</span></div>
+        <div id="area-ui">ENEMIES: <span id="survivors-count">--</span><br>RADIUS: <span id="area-radius">--</span></div>
         <div id="status-ui">
             <div id="at-label" style="color:#f00; font-weight:bold; margin-bottom:5px;">ATTACK: READY</div>
             <div id="ts-label" style="color:#ff0; font-weight:bold; margin-bottom:5px;">ABILITY: READY</div>
@@ -97,8 +97,7 @@
             obstacles.push({ minX: rx-8.5, maxX: rx+8.5, minZ: rz-8.5, maxZ: rz+8.5 });
         }
 
-        let wallGeom = new THREE.CylinderGeometry(areaRadius, areaRadius, 120, 64, 1, true);
-        const areaWall = new THREE.Mesh(wallGeom, new THREE.MeshBasicMaterial({ color: 0x8800ff, transparent: true, opacity: 0.3, side: THREE.DoubleSide }));
+        let areaWall = new THREE.Mesh(new THREE.CylinderGeometry(areaRadius, areaRadius, 120, 64, 1, true), new THREE.MeshBasicMaterial({ color: 0x8800ff, transparent: true, opacity: 0.3, side: THREE.DoubleSide }));
         areaWall.position.y = 60;
         scene.add(areaWall);
 
@@ -120,7 +119,7 @@
             const type = types[Math.floor(Math.random() * types.length)];
             const mesh = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), new THREE.MeshPhongMaterial({ color: type, emissive: type, emissiveIntensity: 0.5 }));
             const ang = Math.random() * Math.PI * 2;
-            const dist = Math.random() * (areaRadius - 20);
+            const dist = Math.random() * (areaRadius * 0.8);
             mesh.position.set(Math.cos(ang)*dist, 0.6, Math.sin(ang)*dist);
             scene.add(mesh);
             items.push({ mesh, type });
@@ -130,12 +129,7 @@
             if (type === 'white') charStats = { speed: 23, attack: 45, color: 0xffffff, type: 'white' };
             if (type === 'cyan') charStats = { speed: 30, attack: 30, color: 0x00ffff, type: 'cyan' };
             if (type === 'gold') charStats = { speed: 17, attack: 80, color: 0xffd700, type: 'gold' };
-            
             pBody.material.color.setHex(charStats.color);
-            if (charStats.type === 'gold') stand.material.color.setHex(0xA020F0);
-            if (charStats.type === 'cyan') stand.material.color.setHex(0xff0033);
-            if (charStats.type === 'white') stand.material.color.setHex(0xffd700);
-            
             document.getElementById('start-screen').style.display = 'none';
             document.getElementById('ui-container').style.display = 'block';
             for(let i=0; i<12; i++) spawnItem();
@@ -143,7 +137,7 @@
         };
 
         function applyDamage(dmg) {
-            if (isRequiem || isErasingTime) return; // GERおよび時飛ばし中は無敵
+            if (isRequiem || isErasingTime) return;
             if (playerShield > 0) {
                 playerShield -= dmg;
                 if (playerShield < 0) { playerHP += playerShield; playerShield = 0; }
@@ -158,12 +152,12 @@
         function spawnEnemy() {
             const mesh = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.5, 1.5), new THREE.MeshPhongMaterial({ color: 0xffff00 }));
             const ang = Math.random() * Math.PI * 2;
-            const dist = 150 + Math.random() * 50;
+            const dist = 100 + Math.random() * 50;
             mesh.position.set(Math.cos(ang)*dist, 0.75, Math.sin(ang)*dist);
             scene.add(mesh);
-            enemies.push({ mesh, alive: true, hp: 100, lastDir: new THREE.Vector3() });
+            enemies.push({ id: Math.random(), mesh, alive: true, hp: 100, lastDir: new THREE.Vector3() });
         }
-        for(let i=0; i<35; i++) spawnEnemy();
+        for(let i=0; i<40; i++) spawnEnemy();
 
         window.addEventListener('keydown', (e) => {
             keys[e.code] = true;
@@ -177,19 +171,11 @@
                     isErasingTime = true;
                     pBody.material.transparent = true; pBody.material.opacity = 0.4;
                     document.getElementById('crimson-overlay').style.display = 'block';
-                    // 時飛ばし時間を6秒に設定
-                    setTimeout(() => { 
-                        isErasingTime = false; 
-                        hasCrit = true; 
-                        pBody.material.opacity = 1.0; 
-                        timeStopCooldown = 10; 
-                        document.getElementById('crimson-overlay').style.display = 'none'; 
-                    }, 6000); 
+                    setTimeout(() => { isErasingTime = false; hasCrit = true; pBody.material.opacity = 1.0; timeStopCooldown = 10; document.getElementById('crimson-overlay').style.display = 'none'; }, 6000); 
                 }
                 if (charStats.type === 'white' && !isRequiem) {
                     isRequiem = true;
-                    pBody.material.color.setHex(0xffff00);
-                    stand.visible = true;
+                    pBody.material.color.setHex(0xffff00); stand.visible = true;
                     document.getElementById('requiem-overlay').style.display = 'block';
                     setTimeout(() => { isRequiem = false; pBody.material.color.setHex(0xffffff); stand.visible = false; timeStopCooldown = 20; document.getElementById('requiem-overlay').style.display = 'none'; }, 5000);
                 }
@@ -227,68 +213,93 @@
                     if (it.type === 0x00ff00) playerHP = Math.min(100, playerHP + 20);
                     if (it.type === 0xff0000) powerUpTimer = 10;
                     if (it.type === 0x00aaff) playerShield = Math.min(100, playerShield + 50);
-                    scene.remove(it.mesh);
-                    items.splice(idx, 1);
-                    setTimeout(spawnItem, 7000);
+                    scene.remove(it.mesh); items.splice(idx, 1);
+                    setTimeout(spawnItem, 5000);
                 }
             });
-
-            if (isRequiem || stand.visible) {
-                stand.position.set((Math.random()-0.5)*0.5, 0.75+(Math.random()-0.5)*0.5, -2.5-Math.random()*0.3);
-            }
 
             if (keys['Space'] && attackCooldown <= 0) {
                 attackCooldown = 1.0;
                 if (!isRequiem) stand.visible = true;
-                let damage = charStats.attack;
-                if (hasCrit) { damage *= 3; hasCrit = false; }
-                if (powerUpTimer > 0) damage *= 2;
-                if (isRequiem) damage *= 1.5;
-                
+                let damage = charStats.attack * (hasCrit ? 3 : 1) * (powerUpTimer > 0 ? 2 : 1) * (isRequiem ? 1.5 : 1);
+                hasCrit = false;
                 let count = 0;
                 const rush = setInterval(() => {
                     enemies.forEach(e => {
                         const range = isRequiem ? 8 : 5;
-                        if (e.alive && e.mesh.position.distanceTo(player.position.clone().add(new THREE.Vector3(0,0,-3).applyQuaternion(player.quaternion))) < range) e.hp -= damage/15;
+                        const targetPos = player.position.clone().add(new THREE.Vector3(0,0,-3).applyQuaternion(player.quaternion));
+                        if (e.alive && e.mesh.position.distanceTo(targetPos) < range) e.hp -= damage/15;
                     });
                     if (++count > 15) { if (!isRequiem) stand.visible = false; clearInterval(rush); }
                 }, 35);
             }
 
             if (!isTimeStopped) {
-                if (areaRadius > 5) areaRadius -= delta * 1.6;
+                if (areaRadius > 5) areaRadius -= delta * 1.5;
                 areaWall.geometry.dispose();
                 areaWall.geometry = new THREE.CylinderGeometry(areaRadius, areaRadius, 120, 64, 1, true);
 
                 enemies.forEach(e => {
                     if (!e.alive) return;
+                    
                     if (isErasingTime) {
-                        const nx = e.mesh.position.x + e.lastDir.x; const nz = e.mesh.position.z + e.lastDir.z;
-                        if (!checkCollision(nx, nz)) { e.mesh.position.x = nx; e.mesh.position.z = nz; }
+                        e.mesh.position.add(e.lastDir);
                     } else {
-                        const dir = player.position.clone().sub(e.mesh.position).normalize();
-                        e.lastDir.copy(dir.multiplyScalar(10 * delta));
-                        const nx = e.mesh.position.x + e.lastDir.x; const nz = e.mesh.position.z + e.lastDir.z;
-                        if (!checkCollision(nx, nz)) { e.mesh.position.x = nx; e.mesh.position.z = nz; }
-                        if (!isRequiem && e.mesh.position.distanceTo(player.position) < 1.5) applyDamage(delta * 15);
+                        // --- ターゲット選定 AI ---
+                        let target = player.position;
+                        let minDist = e.mesh.position.distanceTo(player.position);
+                        
+                        // 近くの敵を探す (索敵範囲 30)
+                        enemies.forEach(other => {
+                            if (other.alive && other.id !== e.id) {
+                                const d = e.mesh.position.distanceTo(other.mesh.position);
+                                if (d < 30 && d < minDist) {
+                                    minDist = d;
+                                    target = other.mesh.position;
+                                }
+                            }
+                        });
+
+                        const distFromCenter = e.mesh.position.length();
+                        let moveVec;
+                        if (distFromCenter > areaRadius * 0.9) {
+                            // 安全地帯外なら中央へ
+                            moveVec = e.mesh.position.clone().negate().normalize().multiplyScalar(12 * delta);
+                        } else {
+                            // ターゲットへ移動
+                            moveVec = target.clone().sub(e.mesh.position).normalize().multiplyScalar(10 * delta);
+                        }
+
+                        const nx = e.mesh.position.x + moveVec.x; const nz = e.mesh.position.z + moveVec.z;
+                        if (!checkCollision(nx, nz)) { e.mesh.position.x = nx; e.mesh.position.z = nz; e.lastDir.copy(moveVec); }
+
+                        // プレイヤーへのダメージ
+                        if (!isRequiem && e.mesh.position.distanceTo(player.position) < 1.5) applyDamage(delta * 20);
+
+                        // 敵同士のダメージ
+                        enemies.forEach(other => {
+                            if (other.alive && other.id !== e.id) {
+                                if (e.mesh.position.distanceTo(other.mesh.position) < 1.5) {
+                                    other.hp -= delta * 25;
+                                }
+                            }
+                        });
                     }
-                    if (e.hp <= 0) { e.alive = false; e.mesh.visible = false; }
+                    if (e.hp <= 0) { e.alive = false; scene.remove(e.mesh); }
                 });
             }
 
-            if (player.position.length() > areaRadius) {
-                applyDamage(delta * 15);
-                document.getElementById('warning').style.display = 'block';
-            } else document.getElementById('warning').style.display = 'none';
-
+            const remainingEnemies = enemies.filter(e => e.alive).length;
             document.getElementById('hp-fill').style.width = Math.max(0, playerHP) + "%";
             document.getElementById('shield-fill').style.width = Math.max(0, playerShield) + "%";
+            document.getElementById('survivors-count').innerText = remainingEnemies;
+            document.getElementById('area-radius').innerText = Math.floor(areaRadius);
             document.getElementById('at-label').innerText = powerUpTimer > 0 ? `POWER UP: ${Math.ceil(powerUpTimer)}` : (attackCooldown > 0 ? `AT CD: ${attackCooldown.toFixed(1)}` : "ATTACK: READY");
             document.getElementById('ts-label').innerText = timeStopCooldown > 0 ? `CD: ${Math.ceil(timeStopCooldown)}` : (isRequiem ? "GER ACTIVE!!" : (isErasingTime ? "ERASING TIME..." : "ABILITY: READY (E)"));
-            document.getElementById('area-radius').innerText = Math.floor(areaRadius);
-            document.getElementById('survivors-count').innerText = enemies.filter(e => e.alive).length + 1;
 
             if (playerHP <= 0) { alert("GAME OVER"); location.reload(); }
+            if (remainingEnemies === 0 && isGameStarted) { alert("YOU WIN!"); location.reload(); }
+            
             renderer.render(scene, camera);
         }
         animate();
