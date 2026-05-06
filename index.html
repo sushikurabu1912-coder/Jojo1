@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>TOFU SURVIVOR: STABLE AI EDITION</title>
+    <title>TOFU SURVIVOR: CHAOS & SPEED</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', sans-serif; user-select: none; transition: filter 0.3s; }
         .time-stopped { filter: invert(100%) hue-rotate(180deg); }
@@ -30,7 +30,7 @@
         <p style="font-size:32px; color:#fff;">RANK: <span id="final-rank">0</span> / 100</p>
     </div>
     <div id="start-screen" class="full-screen-overlay">
-        <h1 style="font-size: 48px; color: #0f0;">TOFU SURVIVOR: STABLE AI</h1>
+        <h1 style="font-size: 48px; color: #0f0;">TOFU SURVIVOR: CHAOS</h1>
         <div class="char-container">
             <div class="char-card" onclick="startGame('white')"><h3 style="color:#fff">WHITE</h3><p>無敵化</p></div>
             <div class="char-card" onclick="startGame('cyan')"><h3 style="color:#0ff">CYAN</h3><p>時飛ばし</p></div>
@@ -193,25 +193,27 @@
             } else camera.position.copy(P_CAMERA_BASE_POS);
 
             const botDelta = isTimeStopped ? 0 : (isTimeSkipping ? delta * 0.2 : delta);
-            areaRadius -= botDelta * 0.35;
+            
+            // --- エリア収縮スピードの大幅強化 ---
+            areaRadius -= botDelta * 1.2; 
             areaWall.geometry.dispose(); areaWall.geometry = new THREE.CylinderGeometry(areaRadius, areaRadius, 200, 64, 1, true);
 
-            // --- 敵AI・重なり防止強化セクション ---
+            // --- 敵AI・乱戦 & 強化ロジック ---
             entities.forEach(e => {
                 if (!e.alive || isTimeStopped) return;
                 
-                // Separation: 敵同士の重なりを物理的に防止
+                // Separation: 重なり防止をさらに強化
                 entities.forEach(other => {
                     if (other.alive && other.id !== e.id) {
                         const dist = e.group.position.distanceTo(other.group.position);
-                        if (dist < 2.5) { // 適切な距離を設定
-                            const pushVec = new THREE.Vector3().subVectors(e.group.position, other.group.position).normalize().multiplyScalar(0.12);
+                        if (dist < 3.0) {
+                            const pushVec = new THREE.Vector3().subVectors(e.group.position, other.group.position).normalize().multiplyScalar(0.2);
                             e.group.position.add(pushVec);
                         }
                     }
                 });
 
-                // AIターゲット強化: プレイヤーを含む最も近い対象を狙う
+                // ターゲット選定（プレイヤーまたは最も近い敵）
                 let targetPos = player.position;
                 let minDist = e.group.position.distanceTo(player.position);
                 let isTargetPlayer = true;
@@ -223,25 +225,32 @@
                     }
                 });
 
-                // 移動実行
-                if (minDist < 80) { // 索敵範囲
+                // 移動実行：大幅にスピードアップ
+                if (minDist < 200) { 
                     const moveDir = new THREE.Vector3().subVectors(targetPos, e.group.position).normalize();
-                    e.group.position.add(moveDir.multiplyScalar(11.5 * botDelta));
+                    e.group.position.add(moveDir.multiplyScalar(15.0 * botDelta));
                 }
 
-                // 攻撃実行
-                if (minDist < 6.8 && e.attackCd <= 0) {
-                    e.attackCd = 2.4; e.stand.visible = true; setTimeout(()=>e.stand.visible=false, 300);
+                // 攻撃実行：敵同士でもダメージを発生させる
+                if (minDist < 7.0 && e.attackCd <= 0) {
+                    e.attackCd = 1.8; // 攻撃頻度もアップ
+                    e.stand.visible = true; setTimeout(()=>e.stand.visible=false, 300);
                     e.stand.position.copy(e.group.position).lerp(targetPos, 0.5); e.stand.position.y = 0.8;
                     
                     if(isTargetPlayer && e.stand.position.distanceTo(player.position) < 3.0 && !isInvincible && !isTimeSkipping) {
                         playerHP -= charStats.attack; createDamageLabel(player.position, charStats.attack);
                     } else if (!isTargetPlayer) {
-                        entities.forEach(v => { if(v.alive && v.id !== e.id && v.group.position.distanceTo(e.stand.position) < 2.5) v.hp -= charStats.attack; });
+                        // 敵同士の攻撃
+                        entities.forEach(v => { 
+                            if(v.alive && v.id !== e.id && v.group.position.distanceTo(e.stand.position) < 2.5) {
+                                v.hp -= charStats.attack;
+                                createDamageLabel(v.group.position, charStats.attack);
+                            }
+                        });
                     }
                 }
                 e.attackCd -= botDelta;
-                if(e.group.position.length() > areaRadius) e.hp -= botDelta * 20;
+                if(e.group.position.length() > areaRadius) e.hp -= botDelta * 25;
                 if(e.hp <= 0) { e.alive = false; if(e.killedByPlayer) dropSkillCard(e.group.position); scene.remove(e.group); scene.remove(e.stand); }
             });
 
