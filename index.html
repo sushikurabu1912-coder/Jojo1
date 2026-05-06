@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>TOFU SURVIVOR: PRECISION STRIKE</title>
+    <title>TOFU SURVIVOR: STRIKE CORRECTED</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', sans-serif; user-select: none; transition: filter 0.3s; }
         .time-stopped { filter: invert(100%) hue-rotate(180deg); }
@@ -24,7 +24,7 @@
 
     <div id="start-screen">
         <h1 style="font-size: 48px; color: #f0f;">TOFU SURVIVOR</h1>
-        <p>ATTACK FIX: 敵のスタンドが正確に正面を攻撃するように修正</p>
+        <p>修正完了：敵のスタンドが常にターゲット（正面）に出るようにしました</p>
         <div class="char-container">
             <div class="char-card" onclick="startGame('white')"><h3 style="color:#fff">WHITE</h3><p>無敵化</p></div>
             <div class="char-card" onclick="startGame('cyan')"><h3 style="color:#0ff">CYAN</h3><p>時飛ばし(6s)</p></div>
@@ -217,12 +217,13 @@
                     setTimeout(() => e.stand.visible = false, 400); 
                 }
 
+                // --- BOTの旋回・攻撃ロジックの修正 ---
                 if (e.stand.visible && e.target) {
-                    // スタンド攻撃の向き修正：常にターゲットの現在位置を向く
+                    // 【修正】攻撃中は移動方向に関わらず、ターゲットの現在位置を完全にロックオン
                     const lookVec = new THREE.Vector3().subVectors(e.target.position, e.group.position).normalize();
                     e.group.lookAt(e.group.position.x + lookVec.x, 0, e.group.position.z + lookVec.z);
                     
-                    // 正面方向に攻撃判定を出す
+                    // 【修正】必ずlookAtで向いた「正面」方向に攻撃判定を出す
                     const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(e.group.quaternion);
                     e.stand.position.copy(e.group.position).add(fwd.multiplyScalar(3.2));
                     
@@ -234,11 +235,18 @@
                     entities.forEach(v => { if (v.alive && v.id !== e.id && e.stand.position.distanceTo(v.group.position) < 5.2) v.hp -= charStats.attack * botDelta * 8; });
                 }
 
+                // エリア規制
                 if (e.group.position.length() > areaRadius * 0.8) moveDir.add(e.group.position.clone().negate().normalize()).normalize();
+                
+                // 移動実行
                 e.group.position.add(moveDir.multiplyScalar(14 * botDelta));
                 checkBuildingCollision(e.group.position, 0.8);
 
-                if (moveDir.length() > 0.01 && !e.stand.visible) e.group.lookAt(e.group.position.x + moveDir.x, 0, e.group.position.z + moveDir.z);
+                // 【修正】攻撃中（pStandが表示されている時）は旋回ロジックをスキップする
+                if (moveDir.length() > 0.01 && !e.stand.visible) {
+                    e.group.lookAt(e.group.position.x + moveDir.x, 0, e.group.position.z + moveDir.z);
+                }
+                
                 if (e.group.position.length() > areaRadius) e.hp -= botDelta * 35;
                 if (e.hp <= 0) { e.alive = false; scene.remove(e.group); scene.remove(e.stand); }
             });
