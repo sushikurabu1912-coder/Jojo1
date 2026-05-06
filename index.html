@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>TOFU SURVIVOR: SHAKE EDITION</title>
+    <title>TOFU SURVIVOR: ULTIMATE EDITION</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', sans-serif; user-select: none; transition: filter 0.3s; }
         .time-stopped { filter: invert(100%) hue-rotate(180deg); }
@@ -28,7 +28,7 @@
 
     <div id="start-screen">
         <h1 style="font-size: 48px; color: #f0f;">TOFU SURVIVOR</h1>
-        <p>カメラシェイクの実装：攻撃時のインパクトを強化しました</p>
+        <p>アルティメットスキル発動：[R] キーに割り当てました</p>
         <div class="char-container">
             <div class="char-card" onclick="startGame('white')"><h3 style="color:#fff">WHITE</h3><p>無敵化</p></div>
             <div class="char-card" onclick="startGame('cyan')"><h3 style="color:#0ff">CYAN</h3><p>時飛ばし(6s)</p></div>
@@ -40,7 +40,7 @@
         <div id="warning">⚠️ OUT OF AREA ⚠️</div>
         <div id="area-ui">SURVIVORS: <span id="survivors-count">40</span><br>SAFE RADIUS: <span id="area-radius">250</span>m</div>
         <div id="status-ui">
-            <div id="skill-ui">READY [E]</div>
+            <div id="skill-ui">READY [R]</div>
             SHIELD <div class="bar-container"><div id="shield-fill"></div></div>
             HP <div class="bar-container"><div id="hp-fill"></div></div>
         </div>
@@ -56,9 +56,8 @@
         let skillCd = 0;
         const entities = [], obstacles = [], items = [], keys = {};
 
-        // カメラシェイク用の変数
         let pCameraShakeAmount = 0;
-        const P_CAMERA_BASE_POS = new THREE.Vector3(0, 15, 20); // カメラの基本位置
+        const P_CAMERA_BASE_POS = new THREE.Vector3(0, 15, 20);
 
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x000005);
@@ -121,7 +120,7 @@
         const pStand = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.5, 1.5), new THREE.MeshPhongMaterial({ color: 0xff0000, transparent: true, opacity: 0.8, emissive: 0x440000 }));
         pStand.visible = false; scene.add(pStand); 
         scene.add(player); player.add(camera);
-        camera.position.copy(P_CAMERA_BASE_POS); // 初期位置を設定
+        camera.position.copy(P_CAMERA_BASE_POS);
         camera.lookAt(0, 0, -5);
 
         function createEntity() {
@@ -164,7 +163,12 @@
             const delta = Math.min(clock.getDelta(), 0.1);
             if (!isGameStarted || isGameOver) return;
 
-            if (skillCd > 0) skillCd -= delta;
+            if (skillCd > 0) {
+                skillCd -= delta;
+                document.getElementById('skill-ui').innerText = "CHARGING...";
+            } else {
+                document.getElementById('skill-ui').innerText = "ULTIMATE [R]";
+            }
 
             const pSpeed = charStats.speed * delta;
             if (keys['ArrowLeft']) player.rotation.y += 3.6 * delta;
@@ -176,19 +180,17 @@
             }
             checkBuildingCollision(player.position, 0.8);
 
-            // カメラシェイクの処理
             if (pCameraShakeAmount > 0) {
                 camera.position.x = P_CAMERA_BASE_POS.x + (Math.random() - 0.5) * pCameraShakeAmount;
                 camera.position.y = P_CAMERA_BASE_POS.y + (Math.random() - 0.5) * pCameraShakeAmount;
-                // z軸の振動は酔いやすいので控えめに
                 camera.position.z = P_CAMERA_BASE_POS.z + (Math.random() - 0.5) * (pCameraShakeAmount * 0.2);
-                
-                pCameraShakeAmount -= delta * 3.0; // 振動を収束させる
+                pCameraShakeAmount -= delta * 3.0;
             } else {
-                camera.position.copy(P_CAMERA_BASE_POS); // 振動が終わったら元に戻す
+                camera.position.copy(P_CAMERA_BASE_POS);
             }
 
-            if (keys['KeyE'] && skillCd <= 0) {
+            // [R]キーでアルティメットスキル発動
+            if (keys['KeyR'] && skillCd <= 0) {
                 skillCd = 12;
                 if (charStats.type === 'white') { isInvincible = true; pBody.material.emissive.setHex(0xffffff); setTimeout(() => { isInvincible = false; pBody.material.emissive.setHex(0x000000); }, 3000); }
                 if (charStats.type === 'cyan') { 
@@ -205,7 +207,7 @@
             pAttackCd -= delta;
             if (keys['Space'] && pAttackCd <= 0) { 
                 pAttackCd = 0.5; pStand.visible = true; 
-                pCameraShakeAmount = 0.8; // 【追加】攻撃時にカメラシェイクを設定
+                pCameraShakeAmount = 0.8;
                 setTimeout(() => pStand.visible = false, 200); 
             }
             
