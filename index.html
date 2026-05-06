@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Tofu Survivor - Absolute Aim Fix</title>
+    <title>Tofu Survivor - Dense Urban Battle</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: 'MS Gothic', sans-serif; }
         #start-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 25, 0.95); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; color: white; text-align: center; }
@@ -21,8 +21,8 @@
 <body>
 
     <div id="start-screen">
-        <h1 style="font-size: 32px; color: #f0f;">FIXED AIM SURVIVOR</h1>
-        <p>敵の攻撃が正確にあなたを狙うようになりました。</p>
+        <h1 style="font-size: 32px; color: #f0f;">DENSE CITY SURVIVOR</h1>
+        <p>120棟のビル群。死角からの攻撃に注意せよ。</p>
         <div class="char-container">
             <div class="char-card" onclick="startGame('white')"><h3>WHITE</h3><p>無敵(E)</p></div>
             <div class="char-card" onclick="startGame('cyan')"><h3>CYAN</h3><p>時飛ばし(E)</p></div>
@@ -46,7 +46,7 @@
         let charStats = { speed: 22, attack: 45, color: 0xffffff };
         let playerHP = 100, playerShield = 0;
         const entities = [], obstacles = [], items = [], keys = {};
-        const DETECT_RANGE = 30; 
+        const DETECT_RANGE = 35;
 
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x000005);
@@ -61,25 +61,36 @@
         const floor = new THREE.Mesh(new THREE.PlaneGeometry(1000, 1000), new THREE.MeshPhongMaterial({ color: 0x111111 }));
         floor.rotation.x = -Math.PI / 2; scene.add(floor);
 
-        // ビル群
+        // --- ビルの均等配置ロジック (グリッドベース) ---
         const colors = [0xff4444, 0x44ff44, 0x4444ff, 0xffff44, 0xff44ff, 0x44ffff];
-        for(let i=0; i<60; i++) {
-            const h = 10 + Math.random() * 30, w = 7 + Math.random() * 3;
-            const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, w), new THREE.MeshPhongMaterial({ color: colors[Math.floor(Math.random()*colors.length)] }));
-            const ang = Math.random() * Math.PI * 2, dist = 30 + Math.random() * 200;
-            mesh.position.set(Math.cos(ang)*dist, h/2, Math.sin(ang)*dist);
-            scene.add(mesh);
-            obstacles.push({ mesh, radius: w/2 + 1.2 });
+        const gridSize = 40; // グリッドの1辺
+        const range = 240;  // 配置する半円の範囲
+        for(let x = -range; x <= range; x += gridSize) {
+            for(let z = -range; z <= range; z += gridSize) {
+                // 中央（プレイヤー初期位置）付近にはビルを建てない
+                if (Math.abs(x) < 20 && Math.abs(z) < 20) continue;
+
+                const h = 15 + Math.random() * 35;
+                const w = 8 + Math.random() * 4;
+                const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, w), new THREE.MeshPhongMaterial({ color: colors[Math.floor(Math.random()*colors.length)] }));
+                
+                // グリッド内で少しランダムにずらす
+                const posX = x + (Math.random() - 0.5) * gridSize * 0.8;
+                const posZ = z + (Math.random() - 0.5) * gridSize * 0.8;
+                
+                mesh.position.set(posX, h/2, posZ);
+                scene.add(mesh);
+                obstacles.push({ mesh, radius: w/2 + 1.2 });
+            }
         }
 
         const areaWall = new THREE.Mesh(new THREE.CylinderGeometry(areaRadius, areaRadius, 150, 64, 1, true), new THREE.MeshBasicMaterial({ color: 0x8800ff, transparent: true, opacity: 0.3, side: THREE.DoubleSide }));
         areaWall.position.y = 75; scene.add(areaWall);
 
-        // プレイヤー設定
+        // プレイヤー
         const player = new THREE.Group();
         const pBody = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.5, 1.5), new THREE.MeshPhongMaterial({ color: 0xffffff }));
         pBody.position.y = 0.75; player.add(pBody);
-        // プレイヤーのスタンドも独立して管理しやすいよう構成
         const pStand = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.8, 1.8), new THREE.MeshPhongMaterial({ color: 0xff0000 }));
         pStand.visible = false; scene.add(pStand); 
         scene.add(player); player.add(camera); camera.position.set(0, 15, 20); camera.lookAt(0, 0, -5);
@@ -88,16 +99,20 @@
             const group = new THREE.Group();
             const body = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.5, 1.5), new THREE.MeshPhongMaterial({ color: 0xffff00 }));
             body.position.y = 0.75; group.add(body);
-            
-            // スタンドはシーンに直接追加（キャラクターの子にしないことで回転の影響を排除）
             const stand = new THREE.Mesh(new THREE.BoxGeometry(2.0, 2.0, 2.0), new THREE.MeshPhongMaterial({ color: 0xff0000, emissive: 0x330000 }));
-            stand.visible = false;
-            scene.add(stand);
+            stand.visible = false; scene.add(stand);
 
-            const ang = Math.random() * Math.PI * 2, dist = 50 + Math.random() * 180;
-            group.position.set(Math.cos(ang)*dist, 0, Math.sin(ang)*dist);
+            let spawned = false;
+            while(!spawned) {
+                const ang = Math.random() * Math.PI * 2, dist = 50 + Math.random() * 180;
+                const tx = Math.cos(ang)*dist, tz = Math.sin(ang)*dist;
+                // ビルの中にスポーンしないようにチェック
+                if (!obstacles.some(o => new THREE.Vector3(tx, 0, tz).distanceTo(o.mesh.position) < o.radius + 2)) {
+                    group.position.set(tx, 0, tz);
+                    spawned = true;
+                }
+            }
             scene.add(group);
-
             return { group, stand, hp: 100, alive: true, id: Math.random(), attackCd: 0, facingDir: new THREE.Vector3(1,0,0), wanderAngle: Math.random() * Math.PI * 2 };
         }
         for(let i=0; i<39; i++) entities.push(createEntity());
@@ -122,7 +137,7 @@
             const delta = Math.min(clock.getDelta(), 0.1);
             if (!isGameStarted) return;
 
-            // プレイヤー操作
+            // プレイヤー移動
             const moveSpeed = charStats.speed * delta;
             if (keys['ArrowLeft']) player.rotation.y += 3 * delta;
             if (keys['ArrowRight']) player.rotation.y -= 3 * delta;
@@ -135,17 +150,16 @@
                 if(!collide) player.position.copy(nextP);
             }
 
-            // プレイヤー攻撃（向きに依存しない絶対座標攻撃）
+            // プレイヤー攻撃
             pAttackCd -= delta;
             if (keys['Space'] && pAttackCd <= 0) {
                 pAttackCd = 0.6;
                 const attackDir = new THREE.Vector3(0,0,-1).applyQuaternion(player.quaternion);
-                pStand.position.copy(player.position).add(attackDir.multiplyScalar(3));
-                pStand.position.y = 1.5;
-                pStand.visible = true;
+                pStand.position.copy(player.position).add(attackDir.multiplyScalar(3.2));
+                pStand.position.y = 1.5; pStand.visible = true;
                 setTimeout(() => pStand.visible = false, 200);
                 entities.forEach(e => {
-                    if (e.alive && e.group.position.distanceTo(pStand.position) < 4) e.hp -= charStats.attack;
+                    if (e.alive && e.group.position.distanceTo(pStand.position) < 4.5) e.hp -= charStats.attack;
                 });
             }
 
@@ -157,10 +171,7 @@
             entities.forEach(e => {
                 if (!e.alive) return;
 
-                let targetPos = null;
-                let minDist = DETECT_RANGE;
-
-                // 索敵
+                let targetPos = null, minDist = DETECT_RANGE;
                 const dToP = e.group.position.distanceTo(player.position);
                 if (dToP < minDist) { minDist = dToP; targetPos = player.position; }
                 entities.forEach(other => {
@@ -171,58 +182,49 @@
                 });
 
                 if (targetPos) {
-                    // 追跡
                     const dir = new THREE.Vector3().subVectors(targetPos, e.group.position).normalize();
                     e.facingDir.lerp(dir, 0.1);
-                    if (minDist > 3.5) {
-                        let nextB = e.group.position.clone().add(e.facingDir.clone().multiplyScalar(10 * delta));
+                    if (minDist > 3.8) {
+                        let nextB = e.group.position.clone().add(e.facingDir.clone().multiplyScalar(10.5 * delta));
                         let bColl = false;
                         obstacles.forEach(o => { if(nextB.distanceTo(o.mesh.position) < o.radius) bColl = true; });
                         if(!bColl) e.group.position.copy(nextB);
                     }
-
-                    // 確実にターゲットの方向にスタンドを出す修正
+                    // BOT攻撃（絶対座標指定）
                     e.attackCd -= delta;
-                    if (minDist < 6.5 && e.attackCd <= 0) {
-                        e.attackCd = 1.5;
-                        // 1. ターゲットへのベクトルを再計算
+                    if (minDist < 6.8 && e.attackCd <= 0) {
+                        e.attackCd = 1.6;
                         const aimDir = new THREE.Vector3().subVectors(targetPos, e.group.position).normalize();
-                        // 2. スタンドを自分の位置からターゲット方向へ2.5ユニット離れた場所に配置
-                        e.stand.position.copy(e.group.position).add(aimDir.multiplyScalar(2.8));
-                        e.stand.position.y = 1.5;
-                        e.stand.visible = true;
-                        
+                        e.stand.position.copy(e.group.position).add(aimDir.multiplyScalar(3.0));
+                        e.stand.position.y = 1.5; e.stand.visible = true;
                         setTimeout(() => e.stand.visible = false, 400);
-
-                        // プレイヤーへのダメージ判定
-                        if (e.group.position.distanceTo(player.position) < 5) {
+                        if (e.group.position.distanceTo(player.position) < 5.2) {
                             if (playerShield > 0) playerShield -= 10; else playerHP -= 10;
                         }
                     }
                 } else {
-                    // 徘徊
                     e.wanderAngle += (Math.random() - 0.5) * 0.4;
                     const wDir = new THREE.Vector3(Math.cos(e.wanderAngle), 0, Math.sin(e.wanderAngle));
-                    if (e.group.position.length() > areaRadius * 0.8) {
-                        wDir.add(e.group.position.clone().negate().normalize()).normalize();
-                    }
+                    if (e.group.position.length() > areaRadius * 0.8) wDir.add(e.group.position.clone().negate().normalize()).normalize();
                     e.facingDir.lerp(wDir, 0.05);
-                    e.group.position.add(e.facingDir.clone().multiplyScalar(6 * delta));
+                    let nextW = e.group.position.clone().add(e.facingDir.clone().multiplyScalar(6 * delta));
+                    let wColl = false;
+                    obstacles.forEach(o => { if(nextW.distanceTo(o.mesh.position) < o.radius) wColl = true; });
+                    if(!wColl) e.group.position.copy(nextW);
                 }
-
                 e.group.lookAt(e.group.position.x + e.facingDir.x, 0, e.group.position.z + e.facingDir.z);
                 if (e.group.position.length() > areaRadius) e.hp -= delta * 30;
                 if (e.hp <= 0) { e.alive = false; scene.remove(e.group); scene.remove(e.stand); }
             });
 
-            // UI反映
+            // UI
             if (player.position.length() > areaRadius) playerHP -= delta * 15;
             document.getElementById('warning').style.display = (player.position.length() > areaRadius) ? 'block' : 'none';
             document.getElementById('hp-fill').style.width = Math.max(0, playerHP) + "%";
             document.getElementById('shield-fill').style.width = playerShield + "%";
             document.getElementById('survivors-count').innerText = entities.filter(e => e.alive).length + 1;
 
-            if (playerHP <= 0) { alert("LOSE..."); location.reload(); }
+            if (playerHP <= 0) { alert("RANK: " + (entities.filter(e => e.alive).length + 1)); location.reload(); }
             renderer.render(scene, camera);
         }
         animate();
