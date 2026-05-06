@@ -2,10 +2,18 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>TOFU SURVIVOR: STRIKE CORRECTED</title>
+    <title>TOFU SURVIVOR: CRIMSON ERASE</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', sans-serif; user-select: none; transition: filter 0.3s; }
         .time-stopped { filter: invert(100%) hue-rotate(180deg); }
+        
+        /* 時の消し飛ばし用：赤いオーバーレイ */
+        #time-skip-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255, 0, 0, 0.3); /* 半透明の赤 */
+            pointer-events: none; z-index: 50; display: none;
+        }
+
         #start-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 30, 0.95); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; color: white; text-align: center; }
         .char-container { display: flex; gap: 20px; margin-top: 30px; }
         .char-card { border: 3px solid #444; padding: 20px; border-radius: 15px; cursor: pointer; transition: 0.3s; background: #111; width: 160px; }
@@ -22,9 +30,11 @@
 </head>
 <body>
 
+    <div id="time-skip-overlay"></div>
+
     <div id="start-screen">
         <h1 style="font-size: 48px; color: #f0f;">TOFU SURVIVOR</h1>
-        <p>修正完了：敵のスタンドが常にターゲット（正面）に出るようにしました</p>
+        <p>VISUAL UPDATE: 消し飛ばし中、画面が赤く染まる演出を追加</p>
         <div class="char-container">
             <div class="char-card" onclick="startGame('white')"><h3 style="color:#fff">WHITE</h3><p>無敵化</p></div>
             <div class="char-card" onclick="startGame('cyan')"><h3 style="color:#0ff">CYAN</h3><p>時飛ばし(6s)</p></div>
@@ -167,7 +177,14 @@
             if (keys['KeyE'] && skillCd <= 0) {
                 skillCd = 12;
                 if (charStats.type === 'white') { isInvincible = true; pBody.material.emissive.setHex(0xffffff); setTimeout(() => { isInvincible = false; pBody.material.emissive.setHex(0x000000); }, 3000); }
-                if (charStats.type === 'cyan') { isTimeSkipping = true; scene.background.setHex(0x000022); setTimeout(() => { isTimeSkipping = false; scene.background.setHex(0x000005); }, 6000); }
+                if (charStats.type === 'cyan') { 
+                    isTimeSkipping = true; 
+                    document.getElementById('time-skip-overlay').style.display = 'block'; // 赤い画面
+                    setTimeout(() => { 
+                        isTimeSkipping = false; 
+                        document.getElementById('time-skip-overlay').style.display = 'none';
+                    }, 6000); 
+                }
                 if (charStats.type === 'gold') { isTimeStopped = true; document.body.classList.add('time-stopped'); setTimeout(() => { isTimeStopped = false; document.body.classList.remove('time-stopped'); }, 4000); }
             }
 
@@ -217,17 +234,12 @@
                     setTimeout(() => e.stand.visible = false, 400); 
                 }
 
-                // --- BOTの旋回・攻撃ロジックの修正 ---
                 if (e.stand.visible && e.target) {
-                    // 【修正】攻撃中は移動方向に関わらず、ターゲットの現在位置を完全にロックオン
                     const lookVec = new THREE.Vector3().subVectors(e.target.position, e.group.position).normalize();
                     e.group.lookAt(e.group.position.x + lookVec.x, 0, e.group.position.z + lookVec.z);
-                    
-                    // 【修正】必ずlookAtで向いた「正面」方向に攻撃判定を出す
                     const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(e.group.quaternion);
                     e.stand.position.copy(e.group.position).add(fwd.multiplyScalar(3.2));
                     
-                    // ダメージ処理
                     if (e.stand.position.distanceTo(player.position) < 5.2 && !isInvincible) { 
                         const dmg = charStats.attack * botDelta * 10;
                         if (playerShield > 0) playerShield -= dmg; else playerHP -= dmg; 
@@ -235,14 +247,10 @@
                     entities.forEach(v => { if (v.alive && v.id !== e.id && e.stand.position.distanceTo(v.group.position) < 5.2) v.hp -= charStats.attack * botDelta * 8; });
                 }
 
-                // エリア規制
                 if (e.group.position.length() > areaRadius * 0.8) moveDir.add(e.group.position.clone().negate().normalize()).normalize();
-                
-                // 移動実行
                 e.group.position.add(moveDir.multiplyScalar(14 * botDelta));
                 checkBuildingCollision(e.group.position, 0.8);
 
-                // 【修正】攻撃中（pStandが表示されている時）は旋回ロジックをスキップする
                 if (moveDir.length() > 0.01 && !e.stand.visible) {
                     e.group.lookAt(e.group.position.x + moveDir.x, 0, e.group.position.z + moveDir.z);
                 }
